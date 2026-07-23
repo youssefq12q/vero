@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { createClient } from "../../utils/supabase/client";
-import {
-  Database,
-  ShieldAlert,
-  Sparkles,
-  RefreshCw,
-  Terminal,
-  ArrowRight,
+import { 
+  Database, 
+  ShieldAlert, 
+  Sparkles, 
+  RefreshCw, 
+  Terminal, 
+  ArrowRight, 
   Code,
   TrendingUp,
   Users,
@@ -15,19 +15,15 @@ import {
   Tag,
   DollarSign,
   CheckCircle2,
-  AlertTriangle,
+  AlertTriangle
 } from "lucide-react";
 
 export default function SupabasePlayground() {
   const [isLoading, setIsLoading] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
-  const [status, setStatus] = useState<
-    "idle" | "connecting" | "success" | "error"
-  >("idle");
+  const [status, setStatus] = useState<"idle" | "connecting" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
-  const [activeSubTab, setActiveSubTab] = useState<"demo" | "sql" | "snippets">(
-    "demo",
-  );
+  const [activeSubTab, setActiveSubTab] = useState<"demo" | "sql" | "snippets">("demo");
 
   // Real-time e-commerce statistics
   const [stats, setStats] = useState({
@@ -41,10 +37,7 @@ export default function SupabasePlayground() {
 
   // Checklist status for each production table
   const [tableStatus, setTableStatus] = useState<{
-    [key: string]: {
-      status: "active" | "missing" | "unchecked";
-      count: number;
-    };
+    [key: string]: { status: "active" | "missing" | "unchecked"; count: number };
   }>({
     categories: { status: "unchecked", count: 0 },
     products: { status: "unchecked", count: 0 },
@@ -62,7 +55,7 @@ export default function SupabasePlayground() {
     const keyRaw = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || "";
     return {
       url: urlRaw.replace(/^['"]|['"]$/g, "").trim(),
-      key: keyRaw.replace(/^['"]|['"]$/g, "").trim(),
+      key: keyRaw.replace(/^['"]|['"]$/g, "").trim()
     };
   };
 
@@ -166,11 +159,7 @@ export default function SupabasePlayground() {
         uCount = usersRes.value.data?.length || 0;
         newTableStatus.users = { status: "active", count: uCount };
         // aggregate loyalty points from profiles as baseline
-        ptsSum =
-          usersRes.value.data?.reduce(
-            (acc, u: any) => acc + (Number(u.loyalty_points) || 0),
-            0,
-          ) || 0;
+        ptsSum = usersRes.value.data?.reduce((acc, u: any) => acc + (Number(u.loyalty_points) || 0), 0) || 0;
       } else {
         newTableStatus.users = { status: "missing", count: 0 };
       }
@@ -179,36 +168,22 @@ export default function SupabasePlayground() {
       if (ordersRes.status === "fulfilled" && !ordersRes.value.error) {
         oCount = ordersRes.value.data?.length || 0;
         newTableStatus.orders = { status: "active", count: oCount };
-        revenueSum =
-          ordersRes.value.data?.reduce(
-            (acc, o: any) => acc + (Number(o.total) || 0),
-            0,
-          ) || 0;
+        revenueSum = ordersRes.value.data?.reduce((acc, o: any) => acc + (Number(o.total) || 0), 0) || 0;
       } else {
         newTableStatus.orders = { status: "missing", count: 0 };
       }
 
       // 5. Order Items
       if (orderItemsRes.status === "fulfilled" && !orderItemsRes.value.error) {
-        newTableStatus.order_items = {
-          status: "active",
-          count: orderItemsRes.value.data?.length || 0,
-        };
+        newTableStatus.order_items = { status: "active", count: orderItemsRes.value.data?.length || 0 };
       } else {
         newTableStatus.order_items = { status: "missing", count: 0 };
       }
 
       // 6. Loyalty Points Ledger
       if (pointsRes.status === "fulfilled" && !pointsRes.value.error) {
-        newTableStatus.loyalty_points = {
-          status: "active",
-          count: pointsRes.value.data?.length || 0,
-        };
-        const ledgerPoints =
-          pointsRes.value.data?.reduce(
-            (acc, p: any) => acc + (Number(p.points) || 0),
-            0,
-          ) || 0;
+        newTableStatus.loyalty_points = { status: "active", count: pointsRes.value.data?.length || 0 };
+        const ledgerPoints = pointsRes.value.data?.reduce((acc, p: any) => acc + (Number(p.points) || 0), 0) || 0;
         if (ptsSum === 0) {
           ptsSum = ledgerPoints;
         }
@@ -218,20 +193,14 @@ export default function SupabasePlayground() {
 
       // 7. Reviews
       if (reviewsRes.status === "fulfilled" && !reviewsRes.value.error) {
-        newTableStatus.reviews = {
-          status: "active",
-          count: reviewsRes.value.data?.length || 0,
-        };
+        newTableStatus.reviews = { status: "active", count: reviewsRes.value.data?.length || 0 };
       } else {
         newTableStatus.reviews = { status: "missing", count: 0 };
       }
 
       // 8. Coupons
       if (couponsRes.status === "fulfilled" && !couponsRes.value.error) {
-        newTableStatus.coupons = {
-          status: "active",
-          count: couponsRes.value.data?.length || 0,
-        };
+        newTableStatus.coupons = { status: "active", count: couponsRes.value.data?.length || 0 };
       } else {
         newTableStatus.coupons = { status: "missing", count: 0 };
       }
@@ -240,13 +209,10 @@ export default function SupabasePlayground() {
 
       // Determine fundamental connection failure
       if (
-        categoriesRes.status === "rejected" ||
+        categoriesRes.status === "rejected" || 
         (categoriesRes.status === "fulfilled" && categoriesRes.value.error)
       ) {
-        const errorDetails =
-          categoriesRes.status === "fulfilled"
-            ? categoriesRes.value.error?.message
-            : "Network error";
+        const errorDetails = categoriesRes.status === "fulfilled" ? categoriesRes.value.error?.message : "Network error";
         throw new Error(errorDetails);
       }
 
@@ -264,9 +230,7 @@ export default function SupabasePlayground() {
     } catch (err: any) {
       console.error("Supabase stats query error:", err);
       setStatus("error");
-      setErrorMessage(
-        err.message || "Failed to query analytical dashboard tables.",
-      );
+      setErrorMessage(err.message || "Failed to query analytical dashboard tables.");
     } finally {
       setIsLoading(false);
     }
@@ -283,7 +247,7 @@ export default function SupabasePlayground() {
       // Local Mock flow updates
       const randomRevenue = Math.floor(Math.random() * 2500) + 800;
       const randomPoints = Math.floor(randomRevenue * 0.1);
-      setStats((prev) => ({
+      setStats(prev => ({
         ...prev,
         ordersCount: prev.ordersCount + 1,
         totalRevenue: prev.totalRevenue + randomRevenue,
@@ -292,61 +256,28 @@ export default function SupabasePlayground() {
       }));
 
       // Update local visual states
-      setTableStatus((prev) => ({
+      setTableStatus(prev => ({
         ...prev,
         orders: { ...prev.orders, count: prev.orders.count + 1 },
         users: { ...prev.users, count: prev.users.count + 1 },
-        loyalty_points: {
-          ...prev.loyalty_points,
-          count: prev.loyalty_points.count + 1,
-        },
+        loyalty_points: { ...prev.loyalty_points, count: prev.loyalty_points.count + 1 },
       }));
 
-      alert(
-        `[Demo Mode] Simulated luxury transaction of $${randomRevenue} created successfully! Stats updated in memory.`,
-      );
+      alert(`[Demo Mode] Simulated luxury transaction of $${randomRevenue} created successfully! Stats updated in memory.`);
       return;
     }
 
     setIsActionLoading(true);
     try {
       const uniqueUserId = crypto.randomUUID();
-      const uniqueOrderId =
-        "ord_" + Math.random().toString(36).substring(2, 11);
-      const firstNames = [
-        "Alistair",
-        "Genevieve",
-        "Reginald",
-        "Evelyn",
-        "Julian",
-        "Beatrix",
-        "Sienna",
-        "Maximilian",
-      ];
-      const lastNames = [
-        "Vance",
-        "Thorne",
-        "Sterling",
-        "Montague",
-        "Duval",
-        "Lockwood",
-        "Rothschild",
-      ];
-      const cities = [
-        "Paris",
-        "London",
-        "Milan",
-        "Tokyo",
-        "New York",
-        "Geneva",
-        "Beverly Hills",
-      ];
-
+      const uniqueOrderId = "ord_" + Math.random().toString(36).substring(2, 11);
+      const firstNames = ["Alistair", "Genevieve", "Reginald", "Evelyn", "Julian", "Beatrix", "Sienna", "Maximilian"];
+      const lastNames = ["Vance", "Thorne", "Sterling", "Montague", "Duval", "Lockwood", "Rothschild"];
+      const cities = ["Paris", "London", "Milan", "Tokyo", "New York", "Geneva", "Beverly Hills"];
+      
       const randomName = `${firstNames[Math.floor(Math.random() * firstNames.length)]} ${lastNames[Math.floor(Math.random() * lastNames.length)]}`;
       const randomCity = cities[Math.floor(Math.random() * cities.length)];
-      const randomSpent = [850, 1200, 1800, 2500, 3500, 4800, 5500, 6500][
-        Math.floor(Math.random() * 8)
-      ];
+      const randomSpent = [850, 1200, 1800, 2500, 3500, 4800, 5500, 6500][Math.floor(Math.random() * 8)];
       const randomPoints = Math.floor(randomSpent * 0.1);
 
       // 1. Create client profile
@@ -355,15 +286,10 @@ export default function SupabasePlayground() {
         name: randomName,
         email: randomName.toLowerCase().replace(" ", ".") + "@luxury-vero.com",
         avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${uniqueUserId}`,
-        tier:
-          randomSpent >= 4000
-            ? "Platinum"
-            : randomSpent >= 2000
-              ? "Gold"
-              : "Silver",
+        tier: randomSpent >= 4000 ? "Platinum" : randomSpent >= 2000 ? "Gold" : "Silver",
         loyalty_points: randomPoints,
         total_spent: randomSpent,
-        joined_date: new Date().toISOString().split("T")[0],
+        joined_date: new Date().toISOString().split("T")[0]
       });
       if (userErr) throw userErr;
 
@@ -378,33 +304,29 @@ export default function SupabasePlayground() {
         shipping_city: randomCity,
         total: randomSpent,
         status: "Completed",
-        date: new Date().toISOString().split("T")[0],
+        date: new Date().toISOString().split("T")[0]
       });
       if (orderErr) throw orderErr;
 
       // 3. Connect order items
       const { error: itemErr } = await supabase.from("order_items").insert({
         order_id: uniqueOrderId,
-        product_id: "sculpted-aurelian-ring",
+        product_id: "sculpted-aurelian-ring", 
         quantity: 1,
         selected_material: "Platinum Grade",
         selected_size: "Standard Suite",
-        price: randomSpent,
+        price: randomSpent
       });
 
       // 4. Award loyalty points ledger entry
-      const { error: pointsErr } = await supabase
-        .from("loyalty_points")
-        .insert({
-          user_id: uniqueUserId,
-          points: randomPoints,
-          description: `Boutique acquisition order confirmation: ${uniqueOrderId}`,
-        });
+      const { error: pointsErr } = await supabase.from("loyalty_points").insert({
+        user_id: uniqueUserId,
+        points: randomPoints,
+        description: `Boutique acquisition order confirmation: ${uniqueOrderId}`
+      });
 
       await fetchStats();
-      alert(
-        `Transaction created! Successfully verified multi-table relationships:\n\n👤 Client: ${randomName}\n💼 Total spent: $${randomSpent}\n🏆 Loyalty points: +${randomPoints}\n📍 Destination: ${randomCity}\n\nAll data is fully synchronized across products, users, orders, and points tables.`,
-      );
+      alert(`Transaction created! Successfully verified multi-table relationships:\n\n👤 Client: ${randomName}\n💼 Total spent: $${randomSpent}\n🏆 Loyalty points: +${randomPoints}\n📍 Destination: ${randomCity}\n\nAll data is fully synchronized across products, users, orders, and points tables.`);
     } catch (err: any) {
       console.error("Error writing demo transaction:", err);
       alert("Verification transaction failed: " + err.message);
@@ -417,7 +339,7 @@ export default function SupabasePlayground() {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "USD",
-      maximumFractionDigits: 0,
+      maximumFractionDigits: 0
     }).format(amount);
   };
 
@@ -479,7 +401,8 @@ export default function SupabasePlayground() {
             activeSubTab === "demo"
               ? "border-brand-gold text-brand-gold font-bold"
               : "border-transparent text-gray-400 hover:text-white"
-          }`}>
+          }`}
+        >
           📈 Live Boutique Statistics
         </button>
         <button
@@ -488,7 +411,8 @@ export default function SupabasePlayground() {
             activeSubTab === "sql"
               ? "border-brand-gold text-brand-gold font-bold"
               : "border-transparent text-gray-400 hover:text-white"
-          }`}>
+          }`}
+        >
           📋 SQL Database Schema
         </button>
         <button
@@ -497,7 +421,8 @@ export default function SupabasePlayground() {
             activeSubTab === "snippets"
               ? "border-brand-gold text-brand-gold font-bold"
               : "border-transparent text-gray-400 hover:text-white"
-          }`}>
+          }`}
+        >
           💻 Client &amp; Server Snippets
         </button>
       </div>
@@ -510,26 +435,13 @@ export default function SupabasePlayground() {
             <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-200 text-xs leading-relaxed font-mono flex items-start gap-3">
               <ShieldAlert className="w-5 h-5 flex-shrink-0 text-amber-400 mt-0.5" />
               <div>
-                <strong className="text-amber-300 block mb-1">
-                  🔑 Demo Mode - Credentials Required
-                </strong>
-                Configure the environment variables inside your AI Studio
-                **Secrets** panel to connect to your live database:
+                <strong className="text-amber-300 block mb-1">🔑 Demo Mode - Credentials Required</strong>
+                Configure the environment variables inside your AI Studio **Secrets** panel to connect to your live database:
                 <ul className="list-disc ml-5 mt-2 space-y-1 text-gray-300">
-                  <li>
-                    <code className="text-amber-200 bg-black/30 px-1 py-0.5 rounded">
-                      VITE_SUPABASE_URL
-                    </code>
-                  </li>
-                  <li>
-                    <code className="text-amber-200 bg-black/30 px-1 py-0.5 rounded">
-                      VITE_SUPABASE_ANON_KEY
-                    </code>
-                  </li>
+                  <li><code className="text-amber-200 bg-black/30 px-1 py-0.5 rounded">VITE_SUPABASE_URL</code></li>
+                  <li><code className="text-amber-200 bg-black/30 px-1 py-0.5 rounded">VITE_SUPABASE_ANON_KEY</code></li>
                 </ul>
-                <p className="mt-2 text-gray-400">
-                  Currently showing high-fidelity simulated boutique telemetry.
-                </p>
+                <p className="mt-2 text-gray-400">Currently showing high-fidelity simulated boutique telemetry.</p>
               </div>
             </div>
           )}
@@ -538,17 +450,10 @@ export default function SupabasePlayground() {
             <div className="p-4 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-200 text-xs font-mono flex items-start gap-3">
               <ShieldAlert className="w-5 h-5 flex-shrink-0 text-rose-400 mt-0.5" />
               <div>
-                <strong className="text-rose-300 block mb-1">
-                  ❌ Query Error details
-                </strong>
+                <strong className="text-rose-300 block mb-1">❌ Query Error details</strong>
                 {errorMessage}
                 <p className="mt-2 text-gray-300">
-                  This happens if your credentials are configured but your
-                  tables are not fully created yet. Click the{" "}
-                  <span className="text-brand-gold font-bold">
-                    SQL Database Schema
-                  </span>{" "}
-                  tab to run the setup script.
+                  This happens if your credentials are configured but your tables are not fully created yet. Click the <span className="text-brand-gold font-bold">SQL Database Schema</span> tab to run the setup script.
                 </p>
               </div>
             </div>
@@ -558,62 +463,46 @@ export default function SupabasePlayground() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-black/30 p-4 rounded-xl border border-brand-umber/15 font-mono">
               <div className="flex items-center justify-between text-gray-500 mb-2">
-                <span className="text-[10px] tracking-wider uppercase">
-                  Boutique Revenue
-                </span>
+                <span className="text-[10px] tracking-wider uppercase">Boutique Revenue</span>
                 <DollarSign className="w-4 h-4 text-brand-gold" />
               </div>
               <div className="text-lg md:text-xl font-bold text-brand-gold">
                 {formatCurrency(stats.totalRevenue)}
               </div>
-              <p className="text-[9px] text-gray-400 mt-1">
-                From {stats.ordersCount} sales receipts
-              </p>
+              <p className="text-[9px] text-gray-400 mt-1">From {stats.ordersCount} sales receipts</p>
             </div>
 
             <div className="bg-black/30 p-4 rounded-xl border border-brand-umber/15 font-mono">
               <div className="flex items-center justify-between text-gray-500 mb-2">
-                <span className="text-[10px] tracking-wider uppercase">
-                  Curated Stock
-                </span>
+                <span className="text-[10px] tracking-wider uppercase">Curated Stock</span>
                 <ShoppingBag className="w-4 h-4 text-brand-gold" />
               </div>
               <div className="text-lg md:text-xl font-bold text-gray-200">
                 {stats.productsCount} items
               </div>
-              <p className="text-[9px] text-gray-400 mt-1">
-                Across {stats.categoriesCount} categories
-              </p>
+              <p className="text-[9px] text-gray-400 mt-1">Across {stats.categoriesCount} categories</p>
             </div>
 
             <div className="bg-black/30 p-4 rounded-xl border border-brand-umber/15 font-mono">
               <div className="flex items-center justify-between text-gray-500 mb-2">
-                <span className="text-[10px] tracking-wider uppercase">
-                  Vero Clients
-                </span>
+                <span className="text-[10px] tracking-wider uppercase">Vero Clients</span>
                 <Users className="w-4 h-4 text-brand-gold" />
               </div>
               <div className="text-lg md:text-xl font-bold text-gray-200">
                 {stats.usersCount} profiles
               </div>
-              <p className="text-[9px] text-gray-400 mt-1">
-                Sync'd with auth accounts
-              </p>
+              <p className="text-[9px] text-gray-400 mt-1">Sync'd with auth accounts</p>
             </div>
 
             <div className="bg-black/30 p-4 rounded-xl border border-brand-umber/15 font-mono">
               <div className="flex items-center justify-between text-gray-500 mb-2">
-                <span className="text-[10px] tracking-wider uppercase">
-                  Loyalty Token Pool
-                </span>
+                <span className="text-[10px] tracking-wider uppercase">Loyalty Token Pool</span>
                 <Award className="w-4 h-4 text-brand-gold" />
               </div>
               <div className="text-lg md:text-xl font-bold text-gray-200">
                 {stats.totalLoyaltyPoints.toLocaleString()} PTS
               </div>
-              <p className="text-[9px] text-gray-400 mt-1">
-                Points in active circulation
-              </p>
+              <p className="text-[9px] text-gray-400 mt-1">Points in active circulation</p>
             </div>
           </div>
 
@@ -624,9 +513,7 @@ export default function SupabasePlayground() {
                 🔌 Write Connection Verification Test
               </h3>
               <p className="text-xs text-gray-400 font-mono mt-1 max-w-xl">
-                Insert a secure mock transaction to verify Supabase WRITE
-                operations across 4 synchronized tables in a single asynchronous
-                batch.
+                Insert a secure mock transaction to verify Supabase WRITE operations across 4 synchronized tables in a single asynchronous batch.
               </p>
             </div>
             <div className="flex gap-2">
@@ -634,17 +521,17 @@ export default function SupabasePlayground() {
                 type="button"
                 onClick={fetchStats}
                 disabled={isLoading}
-                className="bg-black/40 hover:bg-black/60 border border-brand-umber/40 text-gray-300 font-mono text-[10px] tracking-wider px-4 py-2.5 rounded-xl transition-all flex items-center gap-2">
-                <RefreshCw
-                  className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`}
-                />
+                className="bg-black/40 hover:bg-black/60 border border-brand-umber/40 text-gray-300 font-mono text-[10px] tracking-wider px-4 py-2.5 rounded-xl transition-all flex items-center gap-2"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
                 Refresh Statistics
               </button>
               <button
                 type="button"
                 onClick={handleGenerateTransaction}
                 disabled={isActionLoading}
-                className="bg-brand-gold text-black hover:bg-brand-gold/90 font-mono text-[10px] tracking-wider font-bold px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 shadow-lg">
+                className="bg-brand-gold text-black hover:bg-brand-gold/90 font-mono text-[10px] tracking-wider font-bold px-4 py-2.5 rounded-xl transition-all flex items-center gap-2 shadow-lg"
+              >
                 {isActionLoading ? (
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                 ) : (
@@ -662,14 +549,12 @@ export default function SupabasePlayground() {
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs font-mono">
               {Object.entries(tableStatus).map(([tableName, rawValue]) => {
-                const value = rawValue as {
-                  status: "active" | "missing" | "unchecked";
-                  count: number;
-                };
+                const value = rawValue as { status: "active" | "missing" | "unchecked"; count: number };
                 return (
-                  <div
-                    key={tableName}
-                    className="bg-black/20 border border-brand-umber/10 rounded-lg p-3 flex items-center justify-between">
+                  <div 
+                    key={tableName} 
+                    className="bg-black/20 border border-brand-umber/10 rounded-lg p-3 flex items-center justify-between"
+                  >
                     <div className="flex items-center gap-2">
                       {value.status === "active" ? (
                         <CheckCircle2 className="w-4 h-4 text-emerald-400" />
@@ -678,9 +563,7 @@ export default function SupabasePlayground() {
                       ) : (
                         <RefreshCw className="w-4 h-4 text-gray-500 animate-spin" />
                       )}
-                      <span className="text-gray-200 font-medium">
-                        public.{tableName}
-                      </span>
+                      <span className="text-gray-200 font-medium">public.{tableName}</span>
                     </div>
                     <div>
                       {value.status === "active" ? (
@@ -713,36 +596,21 @@ export default function SupabasePlayground() {
               ⚜️ Full Boutique Database Migration Script
             </h4>
             <p className="mb-2">
-              We have generated the complete schema script in{" "}
-              <strong>/supabase_schema.sql</strong> at the root of your project
-              workspace. This creates all 11 tables (
-              <code className="text-brand-gold">categories</code>,{" "}
-              <code className="text-brand-gold">products</code>,{" "}
-              <code className="text-brand-gold">product_images</code>,{" "}
-              <code className="text-brand-gold">users</code>,{" "}
-              <code className="text-brand-gold">cart</code>,{" "}
-              <code className="text-brand-gold">wishlist</code>,{" "}
-              <code className="text-brand-gold">orders</code>,{" "}
-              <code className="text-brand-gold">order_items</code>, etc.), RLS
-              policies, storage buckets for product assets, and auto-sync
-              triggers for auth sign-ups.
+              We have generated the complete schema script in <strong>/supabase_schema.sql</strong> at the root of your project workspace. 
+              This creates all 11 tables (<code className="text-brand-gold">categories</code>, <code className="text-brand-gold">products</code>, <code className="text-brand-gold">product_images</code>, <code className="text-brand-gold">users</code>, <code className="text-brand-gold">cart</code>, <code className="text-brand-gold">wishlist</code>, <code className="text-brand-gold">orders</code>, <code className="text-brand-gold">order_items</code>, etc.), RLS policies, storage buckets for product assets, and auto-sync triggers for auth sign-ups.
             </p>
             <p>
-              Go to your <strong>Supabase Dashboard → SQL Editor</strong>, click
-              "New Query", paste the copied script, and click{" "}
-              <strong>Run</strong>.
+              Go to your <strong>Supabase Dashboard → SQL Editor</strong>, click "New Query", paste the copied script, and click <strong>Run</strong>.
             </p>
           </div>
 
           <div className="bg-black/60 border border-brand-umber/25 rounded-xl p-4 relative group">
             <div className="flex justify-between items-center mb-2 pb-2 border-b border-brand-umber/10 text-gray-400 text-[10px]">
               <span>PREVIEW OF /supabase_schema.sql</span>
-              <span className="text-emerald-500 font-bold">
-                11 TABLES + BUCKETS + TRIGGERS
-              </span>
+              <span className="text-emerald-500 font-bold">11 TABLES + BUCKETS + TRIGGERS</span>
             </div>
             <pre className="text-emerald-400 overflow-x-auto leading-relaxed max-h-72 select-all">
-              {`-- Create categories table
+{`-- Create categories table
 create table public.categories (
     id text primary key,
     name text not null,
@@ -1055,11 +923,10 @@ INSERT INTO public.categories (id, name) VALUES
 ON CONFLICT (id) DO NOTHING;
 `;
                 navigator.clipboard.writeText(fullSql);
-                alert(
-                  "Complete Luxury Boutique SQL Schema copied to clipboard!",
-                );
+                alert("Complete Luxury Boutique SQL Schema copied to clipboard!");
               }}
-              className="absolute top-3 right-3 bg-brand-gold/10 hover:bg-brand-gold/25 border border-brand-gold/35 text-brand-gold px-3 py-1.5 rounded-lg text-[10px] transition-all">
+              className="absolute top-3 right-3 bg-brand-gold/10 hover:bg-brand-gold/25 border border-brand-gold/35 text-brand-gold px-3 py-1.5 rounded-lg text-[10px] transition-all"
+            >
               Copy SQL Script
             </button>
           </div>
@@ -1070,10 +937,7 @@ ON CONFLICT (id) DO NOTHING;
       {activeSubTab === "snippets" && (
         <div className="space-y-4">
           <p className="text-xs text-gray-400 font-mono leading-relaxed">
-            Below are snippets showing how to initialize and consume production
-            tables like <code className="text-brand-gold">products</code> or{" "}
-            <code className="text-brand-gold">orders</code> in your client views
-            or Express server endpoints.
+            Below are snippets showing how to initialize and consume production tables like <code className="text-brand-gold">products</code> or <code className="text-brand-gold">orders</code> in your client views or Express server endpoints.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1083,7 +947,7 @@ ON CONFLICT (id) DO NOTHING;
                 <Code className="w-3.5 h-3.5" /> Frontend (React Vite)
               </div>
               <pre className="text-gray-300 overflow-x-auto">
-                {`import { createClient } from "@/utils/supabase/client";
+{`import { createClient } from "@/utils/supabase/client";
 
 const supabase = createClient();
 
@@ -1108,7 +972,7 @@ const loadBoutiqueCollection = async () => {
                 <Terminal className="w-3.5 h-3.5" /> Backend (Express Route)
               </div>
               <pre className="text-gray-300 overflow-x-auto">
-                {`import { createExpressClient } from "@/utils/supabase/server";
+{`import { createExpressClient } from "@/utils/supabase/server";
 
 app.get("/api/boutique-orders", async (req, res) => {
   const supabase = createExpressClient(req, res);

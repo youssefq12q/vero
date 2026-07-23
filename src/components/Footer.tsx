@@ -30,29 +30,35 @@ export default function Footer({ setActiveTab }: FooterProps) {
             VERO
           </h4>
           <p className="font-sans text-xs font-light text-brand-outline leading-relaxed max-w-[280px]">
-            Timeless accessories designed for the modern individual who values
-            artisanal quality, quiet luxury, and sustainable restraint.
+            Timeless accessories designed for the modern individual who values artisanal quality, quiet luxury, and sustainable restraint.
           </p>
           <div className="flex gap-4 mt-8">
-            <a
-              href="#"
-              onClick={(e) => e.preventDefault()}
+            <a 
+              href="https://www.instagram.com/vero_accessories.store?igsh=MTFzeHFieXp1Mm04aA%3D%3D&utm_source=qr" 
+              target="_blank"
+              rel="noopener noreferrer"
               className="w-8 h-8 rounded-full border border-brand-outline/20 flex items-center justify-center text-brand-gold hover:bg-brand-gold hover:text-white transition-all duration-300"
-              aria-label="Instagram">
+              aria-label="Instagram (@vero_accessories.store)"
+              title="Follow us on Instagram @vero_accessories.store"
+            >
               <Instagram className="w-4 h-4" />
             </a>
-            <a
-              href="#"
+            <a 
+              href="#" 
               onClick={(e) => e.preventDefault()}
               className="w-8 h-8 rounded-full border border-brand-outline/20 flex items-center justify-center text-brand-gold hover:bg-brand-gold hover:text-white transition-all duration-300"
-              aria-label="Global Store">
+              aria-label="Global Store"
+            >
               <Globe className="w-4 h-4" />
             </a>
-            <a
-              href="#"
-              onClick={(e) => e.preventDefault()}
+            <a 
+              href="https://www.instagram.com/vero_accessories.store?igsh=MTFzeHFieXp1Mm04aA%3D%3D&utm_source=qr" 
+              target="_blank"
+              rel="noopener noreferrer"
               className="w-8 h-8 rounded-full border border-brand-outline/20 flex items-center justify-center text-brand-gold hover:bg-brand-gold hover:text-white transition-all duration-300"
-              aria-label="Customer Care chat">
+              aria-label="Instagram DM / Customer Care"
+              title="Instagram DM"
+            >
               <MessageSquare className="w-4 h-4" />
             </a>
           </div>
@@ -65,30 +71,22 @@ export default function Footer({ setActiveTab }: FooterProps) {
           </h5>
           <ul className="space-y-3 font-sans text-xs font-light text-brand-outline">
             <li>
-              <button
-                onClick={() => setActiveTab("shop")}
-                className="hover:text-brand-gold transition-colors text-left">
+              <button onClick={() => setActiveTab("shop")} className="hover:text-brand-gold transition-colors text-left">
                 NEW ARRIVALS
               </button>
             </li>
             <li>
-              <button
-                onClick={() => setActiveTab("shop")}
-                className="hover:text-brand-gold transition-colors text-left">
+              <button onClick={() => setActiveTab("shop")} className="hover:text-brand-gold transition-colors text-left">
                 FINE JEWELRY
               </button>
             </li>
             <li>
-              <button
-                onClick={() => setActiveTab("shop")}
-                className="hover:text-brand-gold transition-colors text-left">
+              <button onClick={() => setActiveTab("shop")} className="hover:text-brand-gold transition-colors text-left">
                 TIMEPIECES
               </button>
             </li>
             <li>
-              <button
-                onClick={() => setActiveTab("shop")}
-                className="hover:text-brand-gold transition-colors text-left">
+              <button onClick={() => setActiveTab("shop")} className="hover:text-brand-gold transition-colors text-left">
                 LEATHER GOODS
               </button>
             </li>
@@ -102,34 +100,27 @@ export default function Footer({ setActiveTab }: FooterProps) {
           </h5>
           <ul className="space-y-3 font-sans text-xs font-light text-brand-outline">
             <li>
-              <a
-                href="#"
-                onClick={(e) => e.preventDefault()}
-                className="hover:text-brand-gold transition-colors">
+              <button onClick={() => setActiveTab("tracking")} className="hover:text-brand-gold transition-colors text-left uppercase font-medium text-brand-gold">
+                🚚 TRACK YOUR ORDER / تتبع الطلب
+              </button>
+            </li>
+            <li>
+              <a href="#" onClick={(e) => e.preventDefault()} className="hover:text-brand-gold transition-colors">
                 SHIPPING &amp; RETURNS
               </a>
             </li>
             <li>
-              <a
-                href="#"
-                onClick={(e) => e.preventDefault()}
-                className="hover:text-brand-gold transition-colors">
+              <a href="#" onClick={(e) => e.preventDefault()} className="hover:text-brand-gold transition-colors">
                 SIZE GUIDE
               </a>
             </li>
             <li>
-              <a
-                href="#"
-                onClick={(e) => e.preventDefault()}
-                className="hover:text-brand-gold transition-colors">
+              <a href="#" onClick={(e) => e.preventDefault()} className="hover:text-brand-gold transition-colors">
                 WARRANTY &amp; REPAIR
               </a>
             </li>
             <li>
-              <a
-                href="#"
-                onClick={(e) => e.preventDefault()}
-                className="hover:text-brand-gold transition-colors">
+              <a href="#" onClick={(e) => e.preventDefault()} className="hover:text-brand-gold transition-colors">
                 CONTACT US
               </a>
             </li>
@@ -142,8 +133,7 @@ export default function Footer({ setActiveTab }: FooterProps) {
             The Vero Journal
           </h5>
           <p className="font-sans text-xs font-light text-brand-outline leading-relaxed mb-6">
-            Join our private circle for exclusive collections, design stories,
-            and bespoke previews.
+            Join our private circle for exclusive collections, design stories, and bespoke previews.
           </p>
           {subscribed ? (
             <div className="flex items-center gap-2 text-xs text-brand-gold bg-[#fff8f3] p-3 border border-brand-outline-variant/50 rounded-sm">
@@ -163,7 +153,8 @@ export default function Footer({ setActiveTab }: FooterProps) {
               <button
                 type="submit"
                 disabled={loading}
-                className="text-brand-gold font-sans text-xs font-medium tracking-[0.15em] hover:opacity-75 transition-opacity uppercase border-b border-brand-gold py-2">
+                className="text-brand-gold font-sans text-xs font-medium tracking-[0.15em] hover:opacity-75 transition-opacity uppercase border-b border-brand-gold py-2"
+              >
                 {loading ? "Joining..." : "SUBSCRIBE"}
               </button>
             </form>
@@ -176,19 +167,9 @@ export default function Footer({ setActiveTab }: FooterProps) {
           © 2026 VERO ACCESSORIES. ALL RIGHTS RESERVED.
         </p>
         <div className="flex justify-center gap-6 mt-4 font-sans text-[10px] text-brand-outline/60 tracking-widest uppercase">
-          <a
-            href="#"
-            onClick={(e) => e.preventDefault()}
-            className="hover:text-brand-gold transition-colors">
-            PRIVACY POLICY
-          </a>
+          <a href="#" onClick={(e) => e.preventDefault()} className="hover:text-brand-gold transition-colors">PRIVACY POLICY</a>
           <span>/</span>
-          <a
-            href="#"
-            onClick={(e) => e.preventDefault()}
-            className="hover:text-brand-gold transition-colors">
-            TERMS OF SERVICE
-          </a>
+          <a href="#" onClick={(e) => e.preventDefault()} className="hover:text-brand-gold transition-colors">TERMS OF SERVICE</a>
         </div>
       </div>
     </footer>

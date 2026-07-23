@@ -23,20 +23,27 @@ import {
   Upload,
   Package,
   Gift,
+  Database,
+  Users,
+  Star,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { Product, Order, Reward, Promo } from "../types";
+import { Product, Order, Reward, Promo, Review } from "../types";
 import { CATEGORIES } from "../data";
+import AdminReviewsManager from "./AdminReviewsManager";
 
 interface AdminPanelProps {
   products: Product[];
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
   onResetDatabase: () => void;
   onClose?: () => void;
+  onOpenSupabase?: () => void;
   orders?: Order[];
   setOrders?: React.Dispatch<React.SetStateAction<Order[]>>;
   promos?: Promo[];
   setPromos?: React.Dispatch<React.SetStateAction<Promo[]>>;
+  reviews?: Review[];
+  onRefreshReviews?: () => void;
 }
 
 // Preset luxury images for easy selection by the user
@@ -68,31 +75,100 @@ export default function AdminPanel({
   setProducts,
   onResetDatabase,
   onClose,
+  onOpenSupabase,
   orders = [],
   setOrders,
   promos = [],
   setPromos,
+  reviews = [],
+  onRefreshReviews,
 }: AdminPanelProps) {
   const [activeSubTab, setActiveSubTab] = React.useState<
-    "catalog" | "add" | "analytics" | "orders" | "rewards" | "promos"
+    "catalog" | "add" | "analytics" | "orders" | "rewards" | "promos" | "users" | "reviews" | "auditLogs"
   >("orders");
   const [searchQuery, setSearchQuery] = React.useState("");
-  const [editingProduct, setEditingProduct] = React.useState<Product | null>(
-    null,
-  );
+  const [editingProduct, setEditingProduct] = React.useState<Product | null>(null);
+
+  // Helper for Session Auth Headers
+  const getAuthHeaders = React.useCallback(() => {
+    const token = localStorage.getItem("vero_session_token");
+    return {
+      "Content-Type": "application/json",
+      ...(token ? { "Authorization": `Bearer ${token}`, "X-Session-Token": token } : {})
+    };
+  }, []);
+
+  // Audit Logs State
+  const [auditLogs, setAuditLogs] = React.useState<any[]>([]);
+
+  const fetchAuditLogs = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/audit-logs", {
+        headers: getAuthHeaders()
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAuditLogs(data);
+      }
+    } catch (err) {
+      console.error("Error fetching audit logs:", err);
+    }
+  }, [getAuthHeaders]);
+
+  React.useEffect(() => {
+    if (activeSubTab === "auditLogs") {
+      fetchAuditLogs();
+    }
+  }, [activeSubTab, fetchAuditLogs]);
+
+  // Users Sub-tab States
+  const [usersList, setUsersList] = React.useState<any[]>([]);
+  const [userSearch, setUserSearch] = React.useState("");
+
+  const fetchUsers = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/users");
+      if (res.ok) {
+        const data = await res.json();
+        setUsersList(data);
+      }
+    } catch (err) {
+      console.error("Error fetching users:", err);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  const handleAddUserPoints = async (userId: string, pointsToAdd: number) => {
+    const userToUpdate = usersList.find((u) => u.id === userId || u.email === userId);
+    if (!userToUpdate) return;
+    const newPoints = (userToUpdate.loyaltyPoints || 0) + pointsToAdd;
+    try {
+      const res = await fetch(`/api/users/${userId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ loyaltyPoints: newPoints }),
+      });
+      if (res.ok) {
+        setUsersList((prev) =>
+          prev.map((u) => (u.id === userId || u.email === userId ? { ...u, loyaltyPoints: newPoints } : u))
+        );
+        setNotification({ text: `Added +${pointsToAdd} PTS to ${userToUpdate.name || userToUpdate.email}!`, type: "success" });
+      }
+    } catch (err) {
+      console.error("Error updating user points:", err);
+    }
+  };
 
   // Orders Sub-tab States
   const [orderSearch, setOrderSearch] = React.useState("");
   const [orderStatusFilter, setOrderStatusFilter] = React.useState("all");
   const [selectedOrder, setSelectedOrder] = React.useState<Order | null>(null);
-  const [updatingOrderId, setUpdatingOrderId] = React.useState<string | null>(
-    null,
-  );
+  const [updatingOrderId, setUpdatingOrderId] = React.useState<string | null>(null);
 
-  const handleUpdateOrderStatus = async (
-    orderId: string,
-    newStatus: string,
-  ) => {
+  const handleUpdateOrderStatus = async (orderId: string, newStatus: string) => {
     setUpdatingOrderId(orderId);
     try {
       const res = await fetch(`/api/orders/${orderId}`, {
@@ -103,9 +179,7 @@ export default function AdminPanel({
       if (res.ok) {
         const updatedOrder = await res.json();
         if (setOrders) {
-          setOrders((prev) =>
-            prev.map((o) => (o.id === orderId ? updatedOrder : o)),
-          );
+          setOrders((prev) => prev.map((o) => (o.id === orderId ? updatedOrder : o)));
         }
         setSelectedOrder(updatedOrder);
         setNotification({
@@ -113,10 +187,7 @@ export default function AdminPanel({
           type: "success",
         });
       } else {
-        setNotification({
-          text: "Failed to update order status.",
-          type: "error",
-        });
+        setNotification({ text: "Failed to update order status.", type: "error" });
       }
     } catch (err) {
       console.error(err);
@@ -165,30 +236,13 @@ export default function AdminPanel({
       // 2. Status filter
       if (!matchesSearch) return false;
       if (orderStatusFilter === "all") return true;
-
+      
       const statusLower = order.status?.toLowerCase() || "";
-      if (orderStatusFilter === "pending")
-        return (
-          statusLower.includes("pending") || statusLower.includes("انتظار")
-        );
-      if (orderStatusFilter === "processing")
-        return (
-          statusLower.includes("processing") || statusLower.includes("تحضير")
-        );
-      if (orderStatusFilter === "transit")
-        return statusLower.includes("transit") || statusLower.includes("شحن");
-      if (orderStatusFilter === "delivered")
-        return (
-          statusLower.includes("delivered") ||
-          statusLower.includes("توصيل") ||
-          statusLower.includes("complete")
-        );
-      if (orderStatusFilter === "cancelled")
-        return (
-          statusLower.includes("cancelled") ||
-          statusLower.includes("إلغاء") ||
-          statusLower.includes("cancel")
-        );
+      if (orderStatusFilter === "pending") return statusLower.includes("pending") || statusLower.includes("انتظار");
+      if (orderStatusFilter === "processing") return statusLower.includes("processing") || statusLower.includes("تحضير");
+      if (orderStatusFilter === "transit") return statusLower.includes("transit") || statusLower.includes("شحن");
+      if (orderStatusFilter === "delivered") return statusLower.includes("delivered") || statusLower.includes("توصيل") || statusLower.includes("complete");
+      if (orderStatusFilter === "cancelled") return statusLower.includes("cancelled") || statusLower.includes("إلغاء") || statusLower.includes("cancel");
 
       return true;
     });
@@ -200,21 +254,30 @@ export default function AdminPanel({
   });
   const [passwordAttempt, setPasswordAttempt] = React.useState("");
   const [passwordError, setPasswordError] = React.useState("");
-
+  
   // Ref to hold the callback prevents any React function state update quirks or closure issues
   const pendingCallbackRef = React.useRef<(() => void) | null>(null);
   const [showLockModal, setShowLockModal] = React.useState(false);
 
   // Custom Confirmation Dialogs State
-  const [productToDelete, setProductToDelete] = React.useState<{
-    id: string;
-    name: string;
-  } | null>(null);
-  const [orderToDelete, setOrderToDelete] = React.useState<{
-    id: string;
-    orderNumber: string;
-  } | null>(null);
+  const [productToDelete, setProductToDelete] = React.useState<{ id: string; name: string } | null>(null);
+  const [orderToDelete, setOrderToDelete] = React.useState<{ id: string; orderNumber: string } | null>(null);
   const [showResetConfirm, setShowResetConfirm] = React.useState(false);
+  const [showClearAllConfirm, setShowClearAllConfirm] = React.useState(false);
+
+  const handleClearAllProducts = () => {
+    verifyAction(() => {
+      setProducts([]);
+      try {
+        localStorage.setItem("vero_products", JSON.stringify([]));
+      } catch (e) {
+        // ignore
+      }
+      fetch("/api/products/clear", { method: "POST" }).catch(console.error);
+      triggerNotification("تم حذف جميع المنتجات بنجاح / All products have been cleared.", "success");
+      setShowClearAllConfirm(false);
+    });
+  };
 
   const verifyAction = (callback: () => void) => {
     if (isAuthenticated) {
@@ -240,26 +303,16 @@ export default function AdminPanel({
   const [tagline, setTagline] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [isNew, setIsNew] = React.useState(false);
-  const [materialOptions, setMaterialOptions] =
-    React.useState<string>("#E5D5BC, #E5E4E2");
-  const [sizeOptions, setSizeOptions] =
-    React.useState<string>("Standard, Premium");
-  const [details, setDetails] = React.useState<string>(
-    "W3C-Validated clean markup structures, Fully accessible (WCAG 2.1 AA compliant)",
-  );
+  const [materialOptions, setMaterialOptions] = React.useState<string>("#E5D5BC, #E5E4E2");
+  const [sizeOptions, setSizeOptions] = React.useState<string>("Standard, Premium");
+  const [details, setDetails] = React.useState<string>("W3C-Validated clean markup structures, Fully accessible (WCAG 2.1 AA compliant)");
   const [craftsmanship, setCraftsmanship] = React.useState("");
   const [stock, setStock] = React.useState<number | "">("");
 
   // Feedback notifications
-  const [notification, setNotification] = React.useState<{
-    type: "success" | "error";
-    text: string;
-  } | null>(null);
+  const [notification, setNotification] = React.useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const triggerNotification = (
-    text: string,
-    type: "success" | "error" = "success",
-  ) => {
+  const triggerNotification = (text: string, type: "success" | "error" = "success") => {
     setNotification({ text, type });
     setTimeout(() => setNotification(null), 3000);
   };
@@ -271,16 +324,11 @@ export default function AdminPanel({
       setCategoryId(editingProduct.categoryId);
       setPrice(editingProduct.price);
       setImageUrl(editingProduct.image);
-
+      
       // Parse secondary/additional images (exclude primary image if duplicate)
-      if (
-        editingProduct.secondaryImages &&
-        editingProduct.secondaryImages.length > 0
-      ) {
+      if (editingProduct.secondaryImages && editingProduct.secondaryImages.length > 0) {
         const primary = editingProduct.image;
-        const others = editingProduct.secondaryImages.filter(
-          (img) => img !== primary,
-        );
+        const others = editingProduct.secondaryImages.filter((img) => img !== primary);
         setAdditionalImages(others);
       } else {
         setAdditionalImages([]);
@@ -310,9 +358,7 @@ export default function AdminPanel({
     setIsNew(false);
     setMaterialOptions("#E5D5BC, #E5E4E2");
     setSizeOptions("Standard, Premium");
-    setDetails(
-      "W3C-Validated clean markup structures, Fully accessible (WCAG 2.1 AA compliant)",
-    );
+    setDetails("W3C-Validated clean markup structures, Fully accessible (WCAG 2.1 AA compliant)");
     setCraftsmanship("");
     setStock("");
   };
@@ -342,13 +388,7 @@ export default function AdminPanel({
 
   const handleAddReward = (e: React.FormEvent) => {
     e.preventDefault();
-    if (
-      !rewardTitle ||
-      !rewardTitleEn ||
-      !rewardCost ||
-      !rewardCode ||
-      !rewardPercent
-    ) {
+    if (!rewardTitle || !rewardTitleEn || !rewardCost || !rewardCode || !rewardPercent) {
       triggerNotification("Please fill in all required fields.", "error");
       return;
     }
@@ -409,16 +449,13 @@ export default function AdminPanel({
   const handleAddPromo = (e: React.FormEvent) => {
     e.preventDefault();
     if (!promoCodeInput.trim()) {
-      triggerNotification(
-        "Please enter a valid coupon code / الرجاء إدخال كود الخصم.",
-        "error",
-      );
+      triggerNotification("Please enter a valid coupon code / الرجاء إدخال كود الخصم.", "error");
       return;
     }
 
     const payload = {
       code: promoCodeInput.trim().toUpperCase(),
-      discountPercent: Number(promoDiscountInput),
+      discountPercent: Number(promoDiscountInput)
     };
 
     fetch("/api/promos", {
@@ -431,10 +468,7 @@ export default function AdminPanel({
         if (setPromos) {
           setPromos(data);
         }
-        triggerNotification(
-          "Promo code created successfully! / تم إنشاء كود الخصم بنجاح!",
-          "success",
-        );
+        triggerNotification("Promo code created successfully! / تم إنشاء كود الخصم بنجاح!", "success");
         setPromoCodeInput("");
         setPromoDiscountInput(10);
       })
@@ -453,10 +487,7 @@ export default function AdminPanel({
         if (setPromos) {
           setPromos(data);
         }
-        triggerNotification(
-          "Promo code deleted successfully! / تم حذف كود الخصم بنجاح!",
-          "success",
-        );
+        triggerNotification("Promo code deleted successfully! / تم حذف كود الخصم بنجاح!", "success");
       })
       .catch((err) => {
         console.error("Error deleting promo code:", err);
@@ -481,9 +512,7 @@ export default function AdminPanel({
     }
 
     const selectedCategoryObj = CATEGORIES.find((cat) => cat.id === categoryId);
-    const categoryName = selectedCategoryObj
-      ? selectedCategoryObj.name
-      : "Fine Jewelry";
+    const categoryName = selectedCategoryObj ? selectedCategoryObj.name : "Fine Jewelry";
 
     const productData: Product = {
       id: editingProduct ? editingProduct.id : `custom-${Date.now()}`,
@@ -492,27 +521,13 @@ export default function AdminPanel({
       categoryName,
       price: Number(price),
       image: imageUrl.trim(),
-      secondaryImages: [
-        imageUrl.trim(),
-        ...additionalImages.map((img) => img.trim()).filter(Boolean),
-      ],
+      secondaryImages: [imageUrl.trim(), ...additionalImages.map((img) => img.trim()).filter(Boolean)],
       tagline: tagline.trim() || `"${name.trim()} by VERO Boutique"`,
-      description:
-        description.trim() ||
-        "An authentic quiet luxury piece hand-finished with exceptional Italian craftsmanship.",
+      description: description.trim() || "An authentic quiet luxury piece hand-finished with exceptional Italian craftsmanship.",
       isNew,
-      materialOptions: materialOptions
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      sizeOptions: sizeOptions
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      details: details
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
+      materialOptions: materialOptions.split(",").map((s) => s.trim()).filter(Boolean),
+      sizeOptions: sizeOptions.split(",").map((s) => s.trim()).filter(Boolean),
+      details: details.split(",").map((s) => s.trim()).filter(Boolean),
       craftsmanship: craftsmanship.trim() || undefined,
       stock: stock === "" ? undefined : Number(stock),
     };
@@ -521,9 +536,7 @@ export default function AdminPanel({
       if (editingProduct) {
         // Edit mode
         setProducts((prev) =>
-          prev.map((prod) =>
-            prod.id === editingProduct.id ? productData : prod,
-          ),
+          prev.map((prod) => (prod.id === editingProduct.id ? productData : prod))
         );
         triggerNotification(`"${name}" updated successfully.`);
         setEditingProduct(null);
@@ -557,7 +570,7 @@ export default function AdminPanel({
   const handleToggleNewArrival = (productId: string) => {
     verifyAction(() => {
       setProducts((prev) =>
-        prev.map((p) => (p.id === productId ? { ...p, isNew: !p.isNew } : p)),
+        prev.map((p) => (p.id === productId ? { ...p, isNew: !p.isNew } : p))
       );
       triggerNotification("Updated product badge.");
     });
@@ -574,9 +587,7 @@ export default function AdminPanel({
 
   // Simple diagnostics stats
   const totalItems = products.length;
-  const avgPrice = Math.round(
-    products.reduce((sum, p) => sum + p.price, 0) / (totalItems || 1),
-  );
+  const avgPrice = Math.round(products.reduce((sum, p) => sum + p.price, 0) / (totalItems || 1));
   const newArrivalsCount = products.filter((p) => p.isNew).length;
 
   return (
@@ -594,8 +605,7 @@ export default function AdminPanel({
             Boutique Catalog Manager
           </h2>
           <p className="text-xs text-brand-linen/60 font-light">
-            Live local database overrides. Add, remove, or modify VERO's catalog
-            instantly.
+            Live local database overrides. Add, remove, or modify VERO's catalog instantly.
           </p>
         </div>
 
@@ -607,7 +617,8 @@ export default function AdminPanel({
               <button
                 onClick={handleLogoutAdmin}
                 className="hover:text-white underline text-[10px] ml-1.5 font-sans animate-pulse"
-                title="Lock Curator Mode">
+                title="Lock Curator Mode"
+              >
                 (قفل / Lock)
               </button>
             </div>
@@ -618,7 +629,8 @@ export default function AdminPanel({
                   triggerNotification("Curator mode authorized.", "success");
                 });
               }}
-              className="flex items-center gap-1.5 bg-brand-gold/15 text-brand-gold hover:bg-brand-gold/25 border border-brand-gold/30 px-3 py-1.5 rounded-sm text-xs font-semibold uppercase tracking-wider transition-all">
+              className="flex items-center gap-1.5 bg-brand-gold/15 text-brand-gold hover:bg-brand-gold/25 border border-brand-gold/30 px-3 py-1.5 rounded-sm text-xs font-semibold uppercase tracking-wider transition-all"
+            >
               <Lock className="w-3.5 h-3.5" />
               <span>فتح وضع المشرف / Unlock Admin</span>
             </button>
@@ -629,16 +641,29 @@ export default function AdminPanel({
               setShowResetConfirm(true);
             }}
             className="flex items-center gap-1.5 text-xs font-medium text-brand-gold hover:text-white border border-brand-gold/30 hover:border-white/50 px-4 py-2.5 rounded-sm transition-all bg-brand-gold/5 cursor-pointer"
-            title="Reset Catalog to Defaults">
+            title="Reset Catalog to Defaults"
+          >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>Curator Reset</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setShowClearAllConfirm(true);
+            }}
+            className="flex items-center gap-1.5 text-xs font-medium text-rose-400 hover:text-white border border-rose-500/30 hover:border-rose-400/50 px-4 py-2.5 rounded-sm transition-all bg-rose-500/10 cursor-pointer"
+            title="Delete all products from catalog"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>حذف جميع المنتجات / Clear All</span>
           </button>
 
           {onClose && (
             <button
               onClick={onClose}
               className="p-2.5 bg-brand-linen/10 hover:bg-brand-linen/20 rounded text-brand-linen transition-colors"
-              aria-label="Close Admin Panel">
+              aria-label="Close Admin Panel"
+            >
               <X className="w-4 h-4" />
             </button>
           )}
@@ -657,7 +682,8 @@ export default function AdminPanel({
               activeSubTab === "orders"
                 ? "bg-brand-gold text-white"
                 : "text-brand-outline hover:text-brand-umber"
-            }`}>
+            }`}
+          >
             <ShoppingBag className="w-3.5 h-3.5" />
             <span>Orders ({orders.length})</span>
           </button>
@@ -670,7 +696,8 @@ export default function AdminPanel({
               activeSubTab === "catalog" && !editingProduct
                 ? "bg-brand-umber text-white"
                 : "text-brand-outline hover:text-brand-umber"
-            }`}>
+            }`}
+          >
             Product Catalog ({totalItems})
           </button>
           <button
@@ -682,7 +709,8 @@ export default function AdminPanel({
               activeSubTab === "add" || editingProduct
                 ? "bg-brand-umber text-white"
                 : "text-brand-outline hover:text-brand-umber"
-            }`}>
+            }`}
+          >
             <Plus className="w-3.5 h-3.5" />
             <span>{editingProduct ? "Edit Product" : "Add Product"}</span>
           </button>
@@ -695,7 +723,8 @@ export default function AdminPanel({
               activeSubTab === "analytics"
                 ? "bg-brand-umber text-white"
                 : "text-brand-outline hover:text-brand-umber"
-            }`}>
+            }`}
+          >
             System Status
           </button>
           <button
@@ -707,7 +736,8 @@ export default function AdminPanel({
               activeSubTab === "rewards"
                 ? "bg-brand-umber text-white"
                 : "text-brand-outline hover:text-brand-umber"
-            }`}>
+            }`}
+          >
             <Gift className="w-3.5 h-3.5" />
             <span>Rewards Management</span>
           </button>
@@ -720,10 +750,65 @@ export default function AdminPanel({
               activeSubTab === "promos"
                 ? "bg-brand-umber text-white"
                 : "text-brand-outline hover:text-brand-umber"
-            }`}>
+            }`}
+          >
             <Tag className="w-3.5 h-3.5" />
             <span>Promo Codes Manager</span>
           </button>
+          <button
+            onClick={() => {
+              setActiveSubTab("users");
+              setEditingProduct(null);
+            }}
+            className={`px-4 py-1.5 text-xs font-semibold tracking-wider uppercase transition-all rounded-[2px] flex items-center gap-1.5 ${
+              activeSubTab === "users"
+                ? "bg-brand-umber text-white"
+                : "text-brand-outline hover:text-brand-umber"
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>المستخدمين / Users ({usersList.length})</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveSubTab("reviews");
+              setEditingProduct(null);
+            }}
+            className={`px-4 py-1.5 text-xs font-semibold tracking-wider uppercase transition-all rounded-[2px] flex items-center gap-1.5 ${
+              activeSubTab === "reviews"
+                ? "bg-brand-gold text-white"
+                : "text-brand-outline hover:text-brand-umber"
+            }`}
+          >
+            <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+            <span>التقييمات / Reviews ({reviews.length})</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveSubTab("auditLogs");
+              setEditingProduct(null);
+            }}
+            className={`px-4 py-1.5 text-xs font-semibold tracking-wider uppercase transition-all rounded-[2px] flex items-center gap-1.5 ${
+              activeSubTab === "auditLogs"
+                ? "bg-emerald-700 text-white"
+                : "text-brand-outline hover:text-brand-umber"
+            }`}
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span>سجل الأمان / Audit Logs</span>
+          </button>
+          {onOpenSupabase && (
+            <button
+              onClick={onOpenSupabase}
+              className="px-4 py-1.5 text-xs font-semibold tracking-wider uppercase transition-all rounded-[2px] bg-emerald-700/10 hover:bg-emerald-700/20 text-emerald-800 border border-emerald-600/30 flex items-center gap-1.5"
+              title="Open Supabase Studio (Admin Only)"
+            >
+              <Database className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Supabase Studio</span>
+            </button>
+          )}
         </div>
 
         {activeSubTab === "catalog" && !editingProduct && (
@@ -739,7 +824,8 @@ export default function AdminPanel({
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-outline hover:text-brand-umber text-[10px]">
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-outline hover:text-brand-umber text-[10px]"
+              >
                 Clear
               </button>
             )}
@@ -760,7 +846,8 @@ export default function AdminPanel({
                 notification.type === "success"
                   ? "bg-emerald-50 text-emerald-800 border-emerald-200"
                   : "bg-rose-50 text-rose-800 border-rose-200"
-              }`}>
+              }`}
+            >
               <Check className="w-4 h-4 text-emerald-500 shrink-0" />
               <span>{notification.text}</span>
             </motion.div>
@@ -772,51 +859,23 @@ export default function AdminPanel({
             {/* Stats Header Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-brand-linen/10 border border-brand-outline-variant/20 p-4 rounded-sm">
-                <span className="text-[10px] text-brand-outline font-bold uppercase tracking-widest block">
-                  Total Orders
-                </span>
-                <span className="text-2xl font-serif text-brand-umber mt-1 block">
-                  {orders.length}
-                </span>
+                <span className="text-[10px] text-brand-outline font-bold uppercase tracking-widest block">Total Orders</span>
+                <span className="text-2xl font-serif text-brand-umber mt-1 block">{orders.length}</span>
               </div>
               <div className="bg-brand-linen/10 border border-brand-outline-variant/20 p-4 rounded-sm">
-                <span className="text-[10px] text-brand-outline font-bold uppercase tracking-widest block">
-                  Total Revenue
-                </span>
-                <span className="text-2xl font-serif text-brand-gold mt-1 block">
-                  EGP{" "}
-                  {orders
-                    .reduce((sum, o) => sum + (o.total || 0), 0)
-                    .toLocaleString()}
-                </span>
+                <span className="text-[10px] text-brand-outline font-bold uppercase tracking-widest block">Total Revenue</span>
+                <span className="text-2xl font-serif text-brand-gold mt-1 block">EGP {orders.reduce((sum, o) => sum + (o.total || 0), 0).toLocaleString()}</span>
               </div>
               <div className="bg-brand-linen/10 border border-brand-outline-variant/20 p-4 rounded-sm">
-                <span className="text-[10px] text-brand-outline font-bold uppercase tracking-widest block">
-                  Pending / قيد الانتظار
-                </span>
+                <span className="text-[10px] text-brand-outline font-bold uppercase tracking-widest block">Pending / قيد الانتظار</span>
                 <span className="text-2xl font-serif text-amber-600 mt-1 block">
-                  {
-                    orders.filter(
-                      (o) =>
-                        o.status?.toLowerCase().includes("pending") ||
-                        o.status?.includes("انتظار"),
-                    ).length
-                  }
+                  {orders.filter(o => o.status?.toLowerCase().includes("pending") || o.status?.includes("انتظار")).length}
                 </span>
               </div>
               <div className="bg-brand-linen/10 border border-brand-outline-variant/20 p-4 rounded-sm">
-                <span className="text-[10px] text-brand-outline font-bold uppercase tracking-widest block">
-                  Delivered / تم التوصيل
-                </span>
+                <span className="text-[10px] text-brand-outline font-bold uppercase tracking-widest block">Delivered / تم التوصيل</span>
                 <span className="text-2xl font-serif text-emerald-600 mt-1 block">
-                  {
-                    orders.filter(
-                      (o) =>
-                        o.status?.toLowerCase().includes("delivered") ||
-                        o.status?.includes("توصيل") ||
-                        o.status?.toLowerCase().includes("complete"),
-                    ).length
-                  }
+                  {orders.filter(o => o.status?.toLowerCase().includes("delivered") || o.status?.includes("توصيل") || o.status?.toLowerCase().includes("complete")).length}
                 </span>
               </div>
             </div>
@@ -835,20 +894,20 @@ export default function AdminPanel({
                 {orderSearch && (
                   <button
                     onClick={() => setOrderSearch("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-outline hover:text-brand-umber text-[10px]">
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-outline hover:text-brand-umber text-[10px]"
+                  >
                     Clear
                   </button>
                 )}
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-[10px] text-brand-outline uppercase tracking-wider font-semibold shrink-0">
-                  Filter:
-                </span>
+                <span className="text-[10px] text-brand-outline uppercase tracking-wider font-semibold shrink-0">Filter:</span>
                 <select
                   value={orderStatusFilter}
                   onChange={(e) => setOrderStatusFilter(e.target.value)}
-                  className="bg-white border border-brand-outline-variant/40 text-xs px-3 py-2.5 rounded-sm text-brand-umber outline-none focus:border-brand-gold">
+                  className="bg-white border border-brand-outline-variant/40 text-xs px-3 py-2.5 rounded-sm text-brand-umber outline-none focus:border-brand-gold"
+                >
                   <option value="all">All Statuses / كل الحالات</option>
                   <option value="pending">Pending / قيد الانتظار</option>
                   <option value="processing">Processing / قيد التحضير</option>
@@ -866,9 +925,7 @@ export default function AdminPanel({
                 {filteredOrders.length === 0 ? (
                   <div className="text-center py-16 border border-dashed border-brand-outline-variant/30 rounded bg-brand-linen/10 space-y-3">
                     <ShoppingBag className="w-10 h-10 text-brand-outline/40 mx-auto animate-pulse" />
-                    <p className="text-xs text-brand-outline font-light">
-                      No orders match the criteria / لا توجد طلبات تطابق الفلتر
-                    </p>
+                    <p className="text-xs text-brand-outline font-light">No orders match the criteria / لا توجد طلبات تطابق الفلتر</p>
                   </div>
                 ) : (
                   <div className="bg-white border border-brand-outline-variant/25 rounded overflow-hidden">
@@ -886,36 +943,16 @@ export default function AdminPanel({
                         <tbody className="divide-y divide-brand-outline-variant/10">
                           {filteredOrders.map((order) => {
                             const isSelected = selectedOrder?.id === order.id;
-                            let badgeClass =
-                              "bg-amber-50 text-amber-700 border-amber-200/50";
-                            const statusLower =
-                              order.status?.toLowerCase() || "";
-                            if (
-                              statusLower.includes("delivered") ||
-                              statusLower.includes("توصيل") ||
-                              statusLower.includes("completed")
-                            ) {
-                              badgeClass =
-                                "bg-emerald-50 text-emerald-700 border-emerald-200/50";
-                            } else if (
-                              statusLower.includes("cancelled") ||
-                              statusLower.includes("إلغاء") ||
-                              statusLower.includes("cancel")
-                            ) {
-                              badgeClass =
-                                "bg-rose-50 text-rose-700 border-rose-200/50";
-                            } else if (
-                              statusLower.includes("transit") ||
-                              statusLower.includes("شحن")
-                            ) {
-                              badgeClass =
-                                "bg-cyan-50 text-cyan-700 border-cyan-200/50";
-                            } else if (
-                              statusLower.includes("processing") ||
-                              statusLower.includes("تحضير")
-                            ) {
-                              badgeClass =
-                                "bg-blue-50 text-blue-700 border-blue-200/50";
+                            let badgeClass = "bg-amber-50 text-amber-700 border-amber-200/50";
+                            const statusLower = order.status?.toLowerCase() || "";
+                            if (statusLower.includes("delivered") || statusLower.includes("توصيل") || statusLower.includes("completed")) {
+                              badgeClass = "bg-emerald-50 text-emerald-700 border-emerald-200/50";
+                            } else if (statusLower.includes("cancelled") || statusLower.includes("إلغاء") || statusLower.includes("cancel")) {
+                              badgeClass = "bg-rose-50 text-rose-700 border-rose-200/50";
+                            } else if (statusLower.includes("transit") || statusLower.includes("شحن")) {
+                              badgeClass = "bg-cyan-50 text-cyan-700 border-cyan-200/50";
+                            } else if (statusLower.includes("processing") || statusLower.includes("تحضير")) {
+                              badgeClass = "bg-blue-50 text-blue-700 border-blue-200/50";
                             }
 
                             return (
@@ -923,30 +960,20 @@ export default function AdminPanel({
                                 key={order.id}
                                 onClick={() => setSelectedOrder(order)}
                                 className={`cursor-pointer transition-colors hover:bg-brand-linen/5 ${
-                                  isSelected
-                                    ? "bg-brand-linen/15 font-semibold"
-                                    : ""
-                                }`}>
+                                  isSelected ? "bg-brand-linen/15 font-semibold" : ""
+                                }`}
+                              >
                                 <td className="p-4 font-mono font-bold text-brand-gold">
                                   #{order.orderNumber}
                                 </td>
                                 <td className="p-4">
-                                  <div className="font-medium text-brand-umber">
-                                    {order.shippingName}
-                                  </div>
-                                  <div className="text-[10px] text-brand-outline/80 font-light">
-                                    {order.shippingCity}
-                                  </div>
+                                  <div className="font-medium text-brand-umber">{order.shippingName}</div>
+                                  <div className="text-[10px] text-brand-outline/80 font-light">{order.shippingCity}</div>
                                 </td>
-                                <td className="p-4 text-brand-outline/90 font-light">
-                                  {order.date}
-                                </td>
-                                <td className="p-4 font-semibold text-brand-umber">
-                                  EGP {order.total?.toLocaleString()}
-                                </td>
+                                <td className="p-4 text-brand-outline/90 font-light">{order.date}</td>
+                                <td className="p-4 font-semibold text-brand-umber">EGP {order.total?.toLocaleString()}</td>
                                 <td className="p-4">
-                                  <span
-                                    className={`inline-flex items-center px-2 py-1 rounded-full text-[10px] font-medium border ${badgeClass}`}>
+                                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-[10px] font-medium border ${badgeClass}`}>
                                     {order.status}
                                   </span>
                                 </td>
@@ -969,7 +996,8 @@ export default function AdminPanel({
                       initial={{ opacity: 0, x: 10 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: 10 }}
-                      className="bg-brand-linen/5 border border-brand-gold/25 rounded p-5 space-y-6 text-left">
+                      className="bg-brand-linen/5 border border-brand-gold/25 rounded p-5 space-y-6 text-left"
+                    >
                       <div className="flex justify-between items-center border-b border-brand-outline-variant/20 pb-3">
                         <div>
                           <h3 className="font-serif text-base text-brand-umber font-bold">
@@ -981,98 +1009,58 @@ export default function AdminPanel({
                         </div>
                         <button
                           onClick={() => setSelectedOrder(null)}
-                          className="text-brand-outline hover:text-brand-umber text-xs uppercase font-bold tracking-widest">
+                          className="text-brand-outline hover:text-brand-umber text-xs uppercase font-bold tracking-widest"
+                        >
                           Deselect
                         </button>
                       </div>
 
                       {/* Customer Summary details */}
                       <div className="space-y-3">
-                        <h4 className="text-[10px] uppercase font-bold tracking-wider text-brand-outline">
-                          Customer Details / العميل
-                        </h4>
+                        <h4 className="text-[10px] uppercase font-bold tracking-wider text-brand-outline">Customer Details / العميل</h4>
                         <div className="text-xs space-y-1.5 text-brand-umber font-light">
-                          <p>
-                            <strong className="font-medium">Name:</strong>{" "}
-                            {selectedOrder.shippingName}
-                          </p>
-                          <p>
-                            <strong className="font-medium">Email:</strong>{" "}
-                            {selectedOrder.shippingEmail}
-                          </p>
-                          <p>
-                            <strong className="font-medium">
-                              Phone / الهاتف:
-                            </strong>{" "}
-                            {selectedOrder.shippingPhone ||
-                              "Not Provided / غير متوفر"}
-                          </p>
-                          <p>
-                            <strong className="font-medium">Address:</strong>{" "}
-                            {selectedOrder.shippingAddress}
-                          </p>
-                          <p>
-                            <strong className="font-medium">City:</strong>{" "}
-                            {selectedOrder.shippingCity}
-                          </p>
-                          {selectedOrder.shippingZip && (
-                            <p>
-                              <strong className="font-medium">ZIP:</strong>{" "}
-                              {selectedOrder.shippingZip}
-                            </p>
-                          )}
+                          <p><strong className="font-medium">Name:</strong> {selectedOrder.shippingName}</p>
+                          <p><strong className="font-medium">Email:</strong> {selectedOrder.shippingEmail}</p>
+                          <p><strong className="font-medium">Phone / الهاتف:</strong> {selectedOrder.shippingPhone || "Not Provided / غير متوفر"}</p>
+                          <p><strong className="font-medium">Address:</strong> {selectedOrder.shippingAddress}</p>
+                          <p><strong className="font-medium">City:</strong> {selectedOrder.shippingCity}</p>
                         </div>
                       </div>
 
                       {/* Status Control Switcher */}
                       <div className="space-y-3 bg-white p-3 border border-brand-outline-variant/15 rounded-sm">
                         <div className="flex justify-between items-center">
-                          <label className="text-[10px] uppercase font-bold tracking-wider text-brand-outline">
-                            Update Status / تحديث الحالة
-                          </label>
+                          <label className="text-[10px] uppercase font-bold tracking-wider text-brand-outline">Update Status / تحديث حالة الطلب</label>
                           {updatingOrderId === selectedOrder.id && (
-                            <span className="text-[9px] text-brand-gold animate-pulse font-medium">
-                              Saving...
-                            </span>
+                            <span className="text-[9px] text-brand-gold animate-pulse font-medium">Saving...</span>
                           )}
                         </div>
                         <select
                           value={selectedOrder.status}
-                          onChange={(e) =>
-                            handleUpdateOrderStatus(
-                              selectedOrder.id,
-                              e.target.value,
-                            )
-                          }
-                          className="w-full bg-brand-linen/5 border border-brand-outline-variant/40 rounded-sm text-xs p-2 text-brand-umber font-semibold outline-none focus:border-brand-gold">
-                          <option value="Pending / قيد الانتظار">
-                            Pending / قيد الانتظار
-                          </option>
-                          <option value="Processing / قيد التحضير">
-                            Processing / قيد التحضير
-                          </option>
-                          <option value="In Transit from Florence / قيد الشحن من فلورنسا">
-                            In Transit / قيد الشحن
-                          </option>
-                          <option value="Delivered / تم التوصيل">
-                            Delivered / تم التوصيل
-                          </option>
-                          <option value="Cancelled / تم الإلغاء">
-                            Cancelled / تم الإلغاء
-                          </option>
+                          onChange={(e) => handleUpdateOrderStatus(selectedOrder.id, e.target.value)}
+                          className="w-full bg-brand-linen/5 border border-brand-outline-variant/40 rounded-sm text-xs p-2 text-brand-umber font-semibold outline-none focus:border-brand-gold"
+                        >
+                          <option value="تم تقديم الطلب">1. تم تقديم الطلب (Order Placed)</option>
+                          <option value="تم تأكيد الطلب">2. تم تأكيد الطلب (Order Confirmed)</option>
+                          <option value="جاري تحضير الطلب">3. جاري تحضير الطلب (Preparing Order)</option>
+                          <option value="فحص الجودة">4. فحص الجودة (Quality Check)</option>
+                          <option value="تم التغليف">5. تم التغليف (Packed)</option>
+                          <option value="جاهز للشحن">6. جاهز للشحن (Ready for Shipment)</option>
+                          <option value="جاري التوصيل">7. جاري التوصيل (Out for Delivery)</option>
+                          <option value="تم التسليم">8. تم التسليم (Delivered)</option>
+                          <option value="تم إلغاء الطلب">تم إلغاء الطلب (Cancelled)</option>
                         </select>
 
                         {/* WhatsApp Communication Prompt */}
                         <a
                           href={`https://wa.me/201026040845?text=${encodeURIComponent(
-                            `مرحباً ${selectedOrder.shippingName}،\nيسعدنا إخطاركم بأن حالة طلبكم رقم #${selectedOrder.orderNumber} لدى Vero Boutique هي الآن: *${selectedOrder.status}*.\n\nتفاصيل الطلب:\nالقيمة الإجمالية: EGP ${selectedOrder.total?.toLocaleString()}\nالعنوان: ${selectedOrder.shippingAddress}، ${selectedOrder.shippingCity}\n\nشكراً لتسوقكم معنا!`,
+                            `مرحباً ${selectedOrder.shippingName}،\nيسعدنا إخطاركم بأن حالة طلبكم رقم #${selectedOrder.orderNumber} لدى Vero Boutique هي الآن: *${selectedOrder.status}*.\n\nتفاصيل الطلب:\nالقيمة الإجمالية: EGP ${selectedOrder.total?.toLocaleString()}\nالعنوان: ${selectedOrder.shippingAddress}، ${selectedOrder.shippingCity}\n\nشكراً لتسوقكم معنا!`
                           )}`}
                           target="_blank"
                           referrerPolicy="no-referrer"
-                          className="mt-2.5 w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-sm text-[11px] font-semibold py-2 px-3 text-center transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer">
-                          <svg
-                            className="w-4 h-4 fill-current"
-                            viewBox="0 0 24 24">
+                          className="mt-2.5 w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-sm text-[11px] font-semibold py-2 px-3 text-center transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                        >
+                          <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
                             <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L0 24l6.335-1.662c1.746.953 3.71 1.458 5.704 1.46h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413" />
                           </svg>
                           <span>Send WhatsApp Update</span>
@@ -1081,14 +1069,10 @@ export default function AdminPanel({
 
                       {/* Items Ordered */}
                       <div className="space-y-3">
-                        <h4 className="text-[10px] uppercase font-bold tracking-wider text-brand-outline">
-                          Items Ordered / المنتجات المطلوبة
-                        </h4>
+                        <h4 className="text-[10px] uppercase font-bold tracking-wider text-brand-outline">Items Ordered / المنتجات المطلوبة</h4>
                         <div className="divide-y divide-brand-outline-variant/10">
                           {selectedOrder.items?.map((item, idx) => (
-                            <div
-                              key={idx}
-                              className="py-2 flex gap-3 items-center text-xs">
+                            <div key={idx} className="py-2 flex gap-3 items-center text-xs">
                               <img
                                 src={item.product.image}
                                 alt={item.product.name}
@@ -1096,21 +1080,14 @@ export default function AdminPanel({
                                 referrerPolicy="no-referrer"
                               />
                               <div className="flex-1 min-w-0">
-                                <p className="font-medium text-brand-umber truncate">
-                                  {item.product.name}
-                                </p>
+                                <p className="font-medium text-brand-umber truncate">{item.product.name}</p>
                                 <p className="text-[10px] text-brand-outline font-light">
-                                  Size: {item.selectedSize} | Mat:{" "}
-                                  {item.selectedMaterial}
+                                  Size: {item.selectedSize} | Mat: {item.selectedMaterial}
                                 </p>
                               </div>
                               <div className="text-right shrink-0">
-                                <p className="font-semibold text-brand-umber">
-                                  {item.quantity}x
-                                </p>
-                                <p className="text-[10px] text-brand-outline">
-                                  EGP {item.product.price?.toLocaleString()}
-                                </p>
+                                <p className="font-semibold text-brand-umber">{item.quantity}x</p>
+                                <p className="text-[10px] text-brand-outline">EGP {item.product.price?.toLocaleString()}</p>
                               </div>
                             </div>
                           ))}
@@ -1119,31 +1096,21 @@ export default function AdminPanel({
 
                       {/* Danger Zone: Delete Order */}
                       <div className="border-t border-brand-outline-variant/20 pt-4 flex justify-between items-center">
-                        <span className="text-[10px] text-brand-outline/80 font-light">
-                          Clear order archive:
-                        </span>
+                        <span className="text-[10px] text-brand-outline/80 font-light">Clear order archive:</span>
                         <button
                           onClick={() => {
-                            setOrderToDelete({
-                              id: selectedOrder.id,
-                              orderNumber: selectedOrder.orderNumber,
-                            });
+                            setOrderToDelete({ id: selectedOrder.id, orderNumber: selectedOrder.orderNumber });
                           }}
-                          className="text-[10px] text-red-600 hover:text-red-700 hover:underline font-semibold uppercase tracking-wider cursor-pointer">
+                          className="text-[10px] text-red-600 hover:text-red-700 hover:underline font-semibold uppercase tracking-wider cursor-pointer"
+                        >
                           Delete Order
                         </button>
                       </div>
                     </motion.div>
                   ) : (
                     <div className="border border-dashed border-brand-outline-variant/20 rounded p-12 text-center text-brand-outline font-light text-xs bg-brand-linen/5 space-y-2">
-                      <p>
-                        Select an order from the list to view complete shipping
-                        info, items breakdown, and issue real-time status
-                        updates.
-                      </p>
-                      <p className="text-[10px] text-brand-gold font-medium">
-                        انقر على أي طلب لعرض التفاصيل وتحديث حالته فوراً.
-                      </p>
+                      <p>Select an order from the list to view complete shipping info, items breakdown, and issue real-time status updates.</p>
+                      <p className="text-[10px] text-brand-gold font-medium">انقر على أي طلب لعرض التفاصيل وتحديث حالته فوراً.</p>
                     </div>
                   )}
                 </AnimatePresence>
@@ -1157,16 +1124,14 @@ export default function AdminPanel({
             {filteredCatalog.length === 0 ? (
               <div className="text-center py-16 border border-dashed border-brand-outline-variant/30 rounded bg-brand-linen/10 space-y-3">
                 <ShoppingBag className="w-10 h-10 text-brand-outline/40 mx-auto" />
-                <h3 className="font-serif text-lg text-brand-umber font-light">
-                  No items found
-                </h3>
+                <h3 className="font-serif text-lg text-brand-umber font-light">No items found</h3>
                 <p className="text-xs text-brand-outline/80 font-light max-w-sm mx-auto">
-                  Try clearing your search keyword or add a beautiful brand-new
-                  luxury accessory to get started.
+                  Try clearing your search keyword or add a beautiful brand-new luxury accessory to get started.
                 </p>
                 <button
                   onClick={() => setActiveSubTab("add")}
-                  className="bg-brand-gold text-white text-xs font-semibold py-2.5 px-6 uppercase tracking-wider rounded-sm hover:bg-brand-umber transition-colors">
+                  className="bg-brand-gold text-white text-xs font-semibold py-2.5 px-6 uppercase tracking-wider rounded-sm hover:bg-brand-umber transition-colors"
+                >
                   Create New Item
                 </button>
               </div>
@@ -1175,27 +1140,17 @@ export default function AdminPanel({
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="bg-brand-linen/40 text-brand-outline uppercase tracking-wider text-[10px] border-b border-brand-outline-variant/20">
-                      <th className="py-4 px-6 font-semibold">
-                        Product Detail
-                      </th>
+                      <th className="py-4 px-6 font-semibold">Product Detail</th>
                       <th className="py-4 px-4 font-semibold">Category</th>
                       <th className="py-4 px-4 font-semibold">Price</th>
-                      <th className="py-4 px-4 font-semibold text-center">
-                        الكمية / Stock
-                      </th>
-                      <th className="py-4 px-4 font-semibold text-center">
-                        Arrival Status
-                      </th>
-                      <th className="py-4 px-6 font-semibold text-right">
-                        Actions
-                      </th>
+                      <th className="py-4 px-4 font-semibold text-center">الكمية / Stock</th>
+                      <th className="py-4 px-4 font-semibold text-center">Arrival Status</th>
+                      <th className="py-4 px-6 font-semibold text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-brand-outline-variant/10">
                     {filteredCatalog.map((product) => (
-                      <tr
-                        key={product.id}
-                        className="hover:bg-brand-linen/10 transition-colors">
+                      <tr key={product.id} className="hover:bg-brand-linen/10 transition-colors">
                         <td className="py-4 px-6">
                           <div className="flex items-center gap-4">
                             <div className="w-12 h-12 rounded border border-brand-outline-variant/20 overflow-hidden bg-brand-linen/20 shrink-0">
@@ -1247,11 +1202,10 @@ export default function AdminPanel({
                                 ? "bg-brand-gold/10 text-brand-gold border-brand-gold/30 shadow-sm"
                                 : "bg-brand-linen/35 text-brand-outline/60 border-brand-outline-variant/20 hover:border-brand-outline-variant/50"
                             }`}
-                            title="Toggle New Arrival tag">
+                            title="Toggle New Arrival tag"
+                          >
                             <Sparkles className="w-3 h-3" />
-                            <span>
-                              {product.isNew ? "New Arrival" : "Standard"}
-                            </span>
+                            <span>{product.isNew ? "New Arrival" : "Standard"}</span>
                           </button>
                         </td>
                         <td className="py-4 px-6 text-right">
@@ -1259,15 +1213,15 @@ export default function AdminPanel({
                             <button
                               onClick={() => setEditingProduct(product)}
                               className="p-2 text-brand-outline hover:text-brand-umber hover:bg-brand-linen/30 rounded transition-colors border border-transparent hover:border-brand-outline-variant/20"
-                              title="Edit product specs">
+                              title="Edit product specs"
+                            >
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
                             <button
-                              onClick={() =>
-                                handleDeleteProduct(product.id, product.name)
-                              }
+                              onClick={() => handleDeleteProduct(product.id, product.name)}
                               className="p-2 text-rose-500 hover:text-white hover:bg-rose-500 rounded transition-all border border-transparent hover:border-rose-600"
-                              title="Delete product">
+                              title="Delete product"
+                            >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
@@ -1282,9 +1236,7 @@ export default function AdminPanel({
         )}
 
         {(activeSubTab === "add" || editingProduct) && (
-          <form
-            onSubmit={handleSaveProduct}
-            className="space-y-8 animate-fadeIn max-w-4xl mx-auto">
+          <form onSubmit={handleSaveProduct} className="space-y-8 animate-fadeIn max-w-4xl mx-auto">
             <div className="bg-brand-linen/15 border border-brand-outline-variant/10 p-5 rounded-sm space-y-1 mb-6 flex items-start gap-3">
               <Info className="w-5 h-5 text-brand-gold shrink-0 mt-0.5" />
               <div>
@@ -1292,9 +1244,7 @@ export default function AdminPanel({
                   Quick Suggestion
                 </span>
                 <p className="text-xs text-brand-outline font-light leading-relaxed">
-                  Avoid searching external sites for photo links. You can click
-                  on any of the VERO premium preset high-fidelity lifestyle
-                  photo URLs below to populate the image form field immediately!
+                  Avoid searching external sites for photo links. You can click on any of the VERO premium preset high-fidelity lifestyle photo URLs below to populate the image form field immediately!
                 </p>
               </div>
             </div>
@@ -1317,7 +1267,8 @@ export default function AdminPanel({
                       imageUrl === preset.url
                         ? "border-brand-gold bg-brand-gold/5 ring-1 ring-brand-gold/30"
                         : "border-brand-outline-variant/20 bg-white hover:border-brand-gold/50"
-                    }`}>
+                    }`}
+                  >
                     <div className="aspect-square rounded overflow-hidden bg-brand-linen/10">
                       <img
                         src={preset.url}
@@ -1326,9 +1277,7 @@ export default function AdminPanel({
                         referrerPolicy="no-referrer"
                       />
                     </div>
-                    <span className="text-brand-umber truncate block w-full">
-                      {preset.name}
-                    </span>
+                    <span className="text-brand-umber truncate block w-full">{preset.name}</span>
                   </button>
                 ))}
               </div>
@@ -1365,11 +1314,7 @@ export default function AdminPanel({
                   min="1"
                   placeholder="e.g. 1450"
                   value={price}
-                  onChange={(e) =>
-                    setPrice(
-                      e.target.value === "" ? "" : Number(e.target.value),
-                    )
-                  }
+                  onChange={(e) => setPrice(e.target.value === "" ? "" : Number(e.target.value))}
                   className="w-full bg-white border border-brand-outline-variant/40 rounded-sm text-xs px-4 py-3 outline-none focus:border-brand-gold text-brand-umber font-medium font-mono"
                 />
               </div>
@@ -1383,7 +1328,8 @@ export default function AdminPanel({
                 <select
                   value={categoryId}
                   onChange={(e) => setCategoryId(e.target.value)}
-                  className="w-full bg-white border border-brand-outline-variant/40 rounded-sm text-xs px-4 py-3 outline-none focus:border-brand-gold text-brand-umber font-medium">
+                  className="w-full bg-white border border-brand-outline-variant/40 rounded-sm text-xs px-4 py-3 outline-none focus:border-brand-gold text-brand-umber font-medium"
+                >
                   {CATEGORIES.filter((cat) => cat.id !== "all").map((cat) => (
                     <option key={cat.id} value={cat.id}>
                       {cat.name}
@@ -1403,11 +1349,7 @@ export default function AdminPanel({
                   min="0"
                   placeholder="e.g. 10 (أتركه فارغاً ليكون غير محدود)"
                   value={stock}
-                  onChange={(e) =>
-                    setStock(
-                      e.target.value === "" ? "" : Number(e.target.value),
-                    )
-                  }
+                  onChange={(e) => setStock(e.target.value === "" ? "" : Number(e.target.value))}
                   className="w-full bg-white border border-brand-outline-variant/40 rounded-sm text-xs px-4 py-3 outline-none focus:border-brand-gold text-brand-umber font-medium font-mono"
                 />
               </div>
@@ -1451,9 +1393,7 @@ export default function AdminPanel({
                               reader.onloadend = () => {
                                 if (typeof reader.result === "string") {
                                   setImageUrl(reader.result);
-                                  triggerNotification(
-                                    "تم تحميل الصورة بنجاح! / Image loaded successfully!",
-                                  );
+                                  triggerNotification("تم تحميل الصورة بنجاح! / Image loaded successfully!");
                                 }
                               };
                               reader.readAsDataURL(file);
@@ -1483,8 +1423,7 @@ export default function AdminPanel({
                     />
                     {imageUrl.startsWith("data:") && (
                       <span className="text-[9px] text-emerald-600 block font-medium">
-                        ✓ تم رفع صورة من جهازك بنجاح ونشطة حالياً / Local
-                        uploaded image is currently active
+                        ✓ تم رفع صورة من جهازك بنجاح ونشطة حالياً / Local uploaded image is currently active
                       </span>
                     )}
                   </div>
@@ -1500,10 +1439,9 @@ export default function AdminPanel({
                   </label>
                   <button
                     type="button"
-                    onClick={() =>
-                      setAdditionalImages([...additionalImages, ""])
-                    }
-                    className="inline-flex items-center gap-1 bg-brand-gold hover:bg-brand-umber text-white text-[10px] font-semibold uppercase tracking-wider px-3 py-1.5 rounded transition-all shadow-sm">
+                    onClick={() => setAdditionalImages([...additionalImages, ""])}
+                    className="inline-flex items-center gap-1 bg-brand-gold hover:bg-brand-umber text-white text-[10px] font-semibold uppercase tracking-wider px-3 py-1.5 rounded transition-all shadow-sm"
+                  >
                     <Plus className="w-3.5 h-3.5" />
                     <span>إضافة صورة / Add Image</span>
                   </button>
@@ -1511,25 +1449,16 @@ export default function AdminPanel({
 
                 {additionalImages.length === 0 ? (
                   <p className="text-[11px] text-brand-outline italic leading-relaxed">
-                    لا توجد صور إضافية حالياً. سيتم عرض الصورة الأساسية فقط. /
-                    No additional images added yet. Only the main image will be
-                    displayed.
+                    لا توجد صور إضافية حالياً. سيتم عرض الصورة الأساسية فقط. / No additional images added yet. Only the main image will be displayed.
                   </p>
                 ) : (
                   <div className="space-y-3">
                     {additionalImages.map((imgUrl, idx) => (
-                      <div
-                        key={idx}
-                        className="flex gap-3 items-center bg-white p-3 border border-brand-outline-variant/20 rounded-sm">
+                      <div key={idx} className="flex gap-3 items-center bg-white p-3 border border-brand-outline-variant/20 rounded-sm">
                         {/* Preview thumbnail */}
                         <div className="w-10 h-10 rounded border border-brand-outline-variant/30 flex items-center justify-center overflow-hidden shrink-0 bg-brand-linen/10">
                           {imgUrl ? (
-                            <img
-                              src={imgUrl}
-                              alt={`Thumbnail ${idx + 1}`}
-                              className="w-full h-full object-cover"
-                              referrerPolicy="no-referrer"
-                            />
+                            <img src={imgUrl} alt={`Thumbnail ${idx + 1}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                           ) : (
                             <FileImage className="w-4 h-4 text-brand-outline/40" />
                           )}
@@ -1573,9 +1502,7 @@ export default function AdminPanel({
                                       const updated = [...additionalImages];
                                       updated[idx] = reader.result;
                                       setAdditionalImages(updated);
-                                      triggerNotification(
-                                        "تم تحميل الصورة بنجاح! / Image loaded successfully!",
-                                      );
+                                      triggerNotification("تم تحميل الصورة بنجاح! / Image loaded successfully!");
                                     }
                                   };
                                   reader.readAsDataURL(file);
@@ -1588,11 +1515,10 @@ export default function AdminPanel({
                           <button
                             type="button"
                             onClick={() => {
-                              setAdditionalImages(
-                                additionalImages.filter((_, i) => i !== idx),
-                              );
+                              setAdditionalImages(additionalImages.filter((_, i) => i !== idx));
                             }}
-                            className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded border border-rose-100 transition-colors">
+                            className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded border border-rose-100 transition-colors"
+                          >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -1708,8 +1634,7 @@ export default function AdminPanel({
                       Tag as New Arrival
                     </span>
                     <span className="text-[10px] text-brand-outline font-light block">
-                      Enables a "Seasonal / New Arrival" badge and lists item in
-                      the landing page carousel.
+                      Enables a "Seasonal / New Arrival" badge and lists item in the landing page carousel.
                     </span>
                   </div>
                 </label>
@@ -1724,12 +1649,14 @@ export default function AdminPanel({
                   setEditingProduct(null);
                   setActiveSubTab("catalog");
                 }}
-                className="text-xs font-semibold uppercase tracking-wider text-brand-outline hover:text-brand-umber py-2.5 px-6">
+                className="text-xs font-semibold uppercase tracking-wider text-brand-outline hover:text-brand-umber py-2.5 px-6"
+              >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="bg-brand-gold text-white text-xs font-semibold py-3.5 px-10 uppercase tracking-[0.2em] hover:bg-brand-umber transition-all shadow-md w-full sm:w-auto">
+                className="bg-brand-gold text-white text-xs font-semibold py-3.5 px-10 uppercase tracking-[0.2em] hover:bg-brand-umber transition-all shadow-md w-full sm:w-auto"
+              >
                 {editingProduct ? "Save Changes" : "Forge Product Access"}
               </button>
             </div>
@@ -1786,18 +1713,15 @@ export default function AdminPanel({
                 </h3>
               </div>
               <p className="text-xs text-brand-outline font-light leading-relaxed max-w-2xl">
-                Any luxury accessories added or removed through this manager are
-                automatically synchronized to your local container sandbox's
-                client state storage. That means they will persist securely
-                across browser refreshes so you can test complete end-to-end
-                purchasing, detail checks, and filters!
+                Any luxury accessories added or removed through this manager are automatically synchronized to your local container sandbox's client state storage. That means they will persist securely across browser refreshes so you can test complete end-to-end purchasing, detail checks, and filters!
               </p>
               <div className="pt-2">
                 <button
                   onClick={() => {
                     setShowResetConfirm(true);
                   }}
-                  className="bg-brand-umber text-white text-[11px] font-semibold tracking-wider uppercase py-3 px-6 rounded-sm hover:bg-brand-gold transition-colors flex items-center gap-2">
+                  className="bg-brand-umber text-white text-[11px] font-semibold tracking-wider uppercase py-3 px-6 rounded-sm hover:bg-brand-gold transition-colors flex items-center gap-2"
+                >
                   <RefreshCw className="w-3.5 h-3.5" />
                   <span>Restore Original Curated Lines</span>
                 </button>
@@ -1818,25 +1742,16 @@ export default function AdminPanel({
                   <h2 className="font-serif text-lg md:text-xl font-bold text-brand-dark tracking-wide">
                     Loyalty Rewards Vault
                   </h2>
-                  <span className="text-brand-outline font-serif text-sm hidden sm:inline">
-                    /
-                  </span>
-                  <h2
-                    className="font-serif text-base md:text-lg font-bold text-brand-dark tracking-wide"
-                    dir="rtl">
+                  <span className="text-brand-outline font-serif text-sm hidden sm:inline">/</span>
+                  <h2 className="font-serif text-base md:text-lg font-bold text-brand-dark tracking-wide" dir="rtl">
                     إدارة مكافآت الولاء
                   </h2>
                 </div>
-                <p
-                  className="text-[11px] text-brand-outline leading-relaxed max-w-3xl"
-                  dir="rtl">
-                  أضف مكافآت حصرية لعملائك الأوفياء ليتمكنوا من استبدالها
-                  باستخدام نقاط الولاء الخاصة بهم من حساباتهم الشخصية.
+                <p className="text-[11px] text-brand-outline leading-relaxed max-w-3xl" dir="rtl">
+                  أضف مكافآت حصرية لعملائك الأوفياء ليتمكنوا من استبدالها باستخدام نقاط الولاء الخاصة بهم من حساباتهم الشخصية.
                 </p>
                 <p className="text-[10px] text-brand-outline/80 leading-relaxed font-light">
-                  Forge exclusive luxury reward coupons redeemable with loyalty
-                  points. The dynamic point engine automatically validates
-                  balances during redemptions.
+                  Forge exclusive luxury reward coupons redeemable with loyalty points. The dynamic point engine automatically validates balances during redemptions.
                 </p>
               </div>
             </div>
@@ -1847,12 +1762,8 @@ export default function AdminPanel({
                 <div className="flex justify-between items-center border-b border-brand-linen pb-3">
                   <h3 className="font-serif text-sm font-bold text-brand-dark flex items-center gap-1.5">
                     <span>Forge Reward</span>
-                    <span className="text-brand-outline/50 font-serif text-xs">
-                      /
-                    </span>
-                    <span className="font-serif" dir="rtl">
-                      إنشاء مكافأة
-                    </span>
+                    <span className="text-brand-outline/50 font-serif text-xs">/</span>
+                    <span className="font-serif" dir="rtl">إنشاء مكافأة</span>
                   </h3>
                 </div>
 
@@ -1899,11 +1810,7 @@ export default function AdminPanel({
                       min={1}
                       placeholder="e.g. 1000"
                       value={rewardCost}
-                      onChange={(e) =>
-                        setRewardCost(
-                          e.target.value === "" ? "" : Number(e.target.value),
-                        )
-                      }
+                      onChange={(e) => setRewardCost(e.target.value === "" ? "" : Number(e.target.value))}
                       className="w-full bg-white border border-[#c5a880]/20 rounded-lg text-xs px-4 py-2.5 outline-none focus:border-brand-gold text-brand-dark font-mono"
                     />
                   </div>
@@ -1919,9 +1826,7 @@ export default function AdminPanel({
                         min="1"
                         max="100"
                         value={rewardPercent || 15}
-                        onChange={(e) =>
-                          setRewardPercent(Number(e.target.value))
-                        }
+                        onChange={(e) => setRewardPercent(Number(e.target.value))}
                         className="flex-grow accent-[#5c4d3c] h-1.5 bg-brand-linen rounded-lg cursor-pointer"
                       />
                       <span className="text-xs font-bold text-brand-dark bg-[#c5a880]/10 px-2.5 py-1.5 rounded-lg border border-[#c5a880]/20 font-mono w-12 text-center select-none shrink-0">
@@ -1976,7 +1881,8 @@ export default function AdminPanel({
 
                   <button
                     type="submit"
-                    className="w-full bg-[#5c4d3c] hover:bg-[#483d30] text-white text-[11px] font-semibold tracking-wider uppercase py-3.5 px-6 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-sm font-serif">
+                    className="w-full bg-[#5c4d3c] hover:bg-[#483d30] text-white text-[11px] font-semibold tracking-wider uppercase py-3.5 px-6 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-sm font-serif"
+                  >
                     <PlusCircle className="w-4 h-4" />
                     <span>FORGE REWARD</span>
                     <span>/</span>
@@ -1990,12 +1896,8 @@ export default function AdminPanel({
                 <div className="flex justify-between items-center border-b border-brand-linen pb-3">
                   <h3 className="font-serif text-sm font-bold text-brand-dark flex items-center gap-1.5">
                     <span>Active Rewards Vault</span>
-                    <span className="text-brand-outline/50 font-serif text-xs">
-                      /
-                    </span>
-                    <span className="font-serif" dir="rtl">
-                      خزينة المكافآت النشطة
-                    </span>
+                    <span className="text-brand-outline/50 font-serif text-xs">/</span>
+                    <span className="font-serif" dir="rtl">خزينة المكافآت النشطة</span>
                   </h3>
                   <span className="text-[9px] font-bold text-brand-outline bg-[#c5a880]/5 border border-[#c5a880]/15 px-2 py-0.5 rounded-full font-mono">
                     {rewards.length} rewards active
@@ -2009,14 +1911,11 @@ export default function AdminPanel({
                       <Gift className="w-8 h-8 stroke-[1.5]" />
                     </div>
                     <div className="space-y-1.5">
-                      <h4
-                        className="font-serif text-sm font-semibold text-brand-dark"
-                        dir="rtl">
+                      <h4 className="font-serif text-sm font-semibold text-brand-dark" dir="rtl">
                         لا توجد مكافآت نشطة حالياً
                       </h4>
                       <p className="text-[10px] text-brand-outline max-w-sm leading-relaxed">
-                        No registered rewards found in the database. Use the
-                        creator form to forge one.
+                        No registered rewards found in the database. Use the creator form to forge one.
                       </p>
                     </div>
                   </div>
@@ -2027,75 +1926,49 @@ export default function AdminPanel({
                       <div
                         key={reward.id}
                         className="p-4 bg-[#fffdfb] border border-[#c5a880]/15 rounded-xl flex flex-col justify-between gap-3 shadow-xs relative"
-                        dir="rtl">
+                        dir="rtl"
+                      >
                         <div className="flex justify-between items-start gap-2">
                           <div className="text-right flex-grow">
                             <h4 className="font-serif text-xs font-bold text-brand-dark leading-tight">
                               {reward.title}
                             </h4>
-                            <span
-                              className="text-[9px] text-brand-outline font-light block mt-0.5"
-                              dir="ltr">
+                            <span className="text-[9px] text-brand-outline font-light block mt-0.5" dir="ltr">
                               {reward.titleEn}
                             </span>
                           </div>
 
                           <button
-                            onClick={() =>
-                              verifyAction(() => handleDeleteReward(reward.id))
-                            }
+                            onClick={() => verifyAction(() => handleDeleteReward(reward.id))}
                             className="p-2 text-brand-outline/50 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all shrink-0"
-                            title="Delete reward">
+                            title="Delete reward"
+                          >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
 
                         <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-brand-linen/40">
-                          <div
-                            className="flex justify-between items-center bg-brand-linen/15 p-2 rounded"
-                            dir="ltr">
-                            <span className="text-brand-outline text-[9px]">
-                              Cost / النقاط
-                            </span>
-                            <span className="font-mono text-brand-gold font-bold">
-                              {reward.cost} PTS
-                            </span>
+                          <div className="flex justify-between items-center bg-brand-linen/15 p-2 rounded" dir="ltr">
+                            <span className="text-brand-outline text-[9px]">Cost / النقاط</span>
+                            <span className="font-mono text-brand-gold font-bold">{reward.cost} PTS</span>
                           </div>
 
-                          <div
-                            className="flex justify-between items-center bg-rose-50/40 p-2 rounded"
-                            dir="ltr">
-                            <span className="text-brand-outline text-[9px]">
-                              Discount / خصم
-                            </span>
-                            <span className="font-mono text-rose-600 font-bold">
-                              {reward.discountPercent}% OFF
-                            </span>
+                          <div className="flex justify-between items-center bg-rose-50/40 p-2 rounded" dir="ltr">
+                            <span className="text-brand-outline text-[9px]">Discount / خصم</span>
+                            <span className="font-mono text-rose-600 font-bold">{reward.discountPercent}% OFF</span>
                           </div>
                         </div>
 
-                        <div
-                          className="flex justify-between items-center bg-brand-linen/10 p-2 rounded text-xs font-mono"
-                          dir="ltr">
-                          <span className="text-brand-outline text-[9px]">
-                            Code / رمز الكوبون
-                          </span>
-                          <span className="font-bold text-brand-umber select-all uppercase tracking-wider">
-                            {reward.code}
-                          </span>
+                        <div className="flex justify-between items-center bg-brand-linen/10 p-2 rounded text-xs font-mono" dir="ltr">
+                          <span className="text-brand-outline text-[9px]">Code / رمز الكوبون</span>
+                          <span className="font-bold text-brand-umber select-all uppercase tracking-wider">{reward.code}</span>
                         </div>
 
                         {(reward.description || reward.descriptionEn) && (
                           <div className="text-[10px] text-brand-outline space-y-0.5 border-t border-[#c5a880]/10 pt-2 text-right">
-                            {reward.description && (
-                              <p className="font-medium text-brand-dark">
-                                {reward.description}
-                              </p>
-                            )}
+                            {reward.description && <p className="font-medium text-brand-dark">{reward.description}</p>}
                             {reward.descriptionEn && (
-                              <p
-                                className="font-light italic text-left text-[9.5px]"
-                                dir="ltr">
+                              <p className="font-light italic text-left text-[9.5px]" dir="ltr">
                                 {reward.descriptionEn}
                               </p>
                             )}
@@ -2122,24 +1995,16 @@ export default function AdminPanel({
                   <h2 className="font-serif text-lg md:text-xl font-bold text-brand-dark tracking-wide">
                     Promo Codes Manager
                   </h2>
-                  <span className="text-brand-outline font-serif text-sm hidden sm:inline">
-                    /
-                  </span>
-                  <h2
-                    className="font-serif text-base md:text-lg font-bold text-brand-dark tracking-wide"
-                    dir="rtl">
+                  <span className="text-brand-outline font-serif text-sm hidden sm:inline">/</span>
+                  <h2 className="font-serif text-base md:text-lg font-bold text-brand-dark tracking-wide" dir="rtl">
                     إدارة كوبونات الخصم
                   </h2>
                 </div>
-                <p
-                  className="text-[11px] text-brand-outline leading-relaxed max-w-3xl"
-                  dir="rtl">
-                  أضف أو عطل أو احذف كوبونات الخصم لعملائك ديناميكياً. سيقوم
-                  نظام السلة بالتحقق من هذه الأكواد وتطبيقها تلقائياً.
+                <p className="text-[11px] text-brand-outline leading-relaxed max-w-3xl" dir="rtl">
+                  أضف أو عطل أو احذف كوبونات الخصم لعملائك ديناميكياً. سيقوم نظام السلة بالتحقق من هذه الأكواد وتطبيقها تلقائياً.
                 </p>
                 <p className="text-[10px] text-brand-outline/80 leading-relaxed font-light">
-                  Dynamically manage active coupons. The cart system
-                  automatically validates codes from your live repository.
+                  Dynamically manage active coupons. The cart system automatically validates codes from your live repository.
                 </p>
               </div>
             </div>
@@ -2150,12 +2015,8 @@ export default function AdminPanel({
                 <div className="flex justify-between items-center border-b border-brand-linen pb-3">
                   <h3 className="font-serif text-sm font-bold text-brand-dark flex items-center gap-1.5">
                     <span>Create Coupon</span>
-                    <span className="text-brand-outline/50 font-serif text-xs">
-                      /
-                    </span>
-                    <span className="font-serif" dir="rtl">
-                      إنشاء كوبون جديد
-                    </span>
+                    <span className="text-brand-outline/50 font-serif text-xs">/</span>
+                    <span className="font-serif" dir="rtl">إنشاء كوبون جديد</span>
                   </h3>
                 </div>
 
@@ -2188,9 +2049,7 @@ export default function AdminPanel({
                         min="1"
                         max="100"
                         value={promoDiscountInput}
-                        onChange={(e) =>
-                          setPromoDiscountInput(Number(e.target.value))
-                        }
+                        onChange={(e) => setPromoDiscountInput(Number(e.target.value))}
                         className="flex-grow accent-[#5c4d3c] h-1.5 bg-brand-linen rounded-lg cursor-pointer"
                       />
                       <span className="text-xs font-bold text-brand-dark bg-[#c5a880]/10 px-2.5 py-1.5 rounded-lg border border-[#c5a880]/20 font-mono w-12 text-center select-none shrink-0">
@@ -2202,7 +2061,8 @@ export default function AdminPanel({
                   {/* Forge Coupon Button */}
                   <button
                     type="submit"
-                    className="w-full bg-[#5c4d3c] hover:bg-[#483d30] text-white text-[11px] font-semibold tracking-wider uppercase py-3.5 px-6 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-sm font-serif">
+                    className="w-full bg-[#5c4d3c] hover:bg-[#483d30] text-white text-[11px] font-semibold tracking-wider uppercase py-3.5 px-6 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-sm font-serif"
+                  >
                     <PlusCircle className="w-4 h-4" />
                     <span>FORGE COUPON</span>
                     <span>/</span>
@@ -2216,12 +2076,8 @@ export default function AdminPanel({
                 <div className="flex justify-between items-center border-b border-brand-linen pb-3">
                   <h3 className="font-serif text-sm font-bold text-brand-dark flex items-center gap-1.5">
                     <span>Live Coupon Directory</span>
-                    <span className="text-brand-outline/50 font-serif text-xs">
-                      /
-                    </span>
-                    <span className="font-serif" dir="rtl">
-                      الكوبونات النشطة
-                    </span>
+                    <span className="text-brand-outline/50 font-serif text-xs">/</span>
+                    <span className="font-serif" dir="rtl">الكوبونات النشطة</span>
                   </h3>
                   <span className="text-[9px] font-bold text-brand-outline bg-[#c5a880]/5 border border-[#c5a880]/15 px-2 py-0.5 rounded-full font-mono">
                     {promos.length} codes listed
@@ -2235,14 +2091,11 @@ export default function AdminPanel({
                       <Tag className="w-8 h-8 stroke-[1.5]" />
                     </div>
                     <div className="space-y-1.5">
-                      <h4
-                        className="font-serif text-sm font-semibold text-brand-dark"
-                        dir="rtl">
+                      <h4 className="font-serif text-sm font-semibold text-brand-dark" dir="rtl">
                         لا توجد كوبونات خصم حالياً
                       </h4>
                       <p className="text-[10px] text-brand-outline max-w-sm leading-relaxed">
-                        No registered promo codes found in the database. Use the
-                        form to forge one.
+                        No registered promo codes found in the database. Use the form to forge one.
                       </p>
                     </div>
                   </div>
@@ -2252,7 +2105,8 @@ export default function AdminPanel({
                     {promos.map((promo) => (
                       <div
                         key={promo.id}
-                        className="p-4 bg-[#fffdfb] border border-[#c5a880]/15 rounded-xl flex items-center justify-between gap-4 shadow-xs">
+                        className="p-4 bg-[#fffdfb] border border-[#c5a880]/15 rounded-xl flex items-center justify-between gap-4 shadow-xs"
+                      >
                         <div className="flex items-center gap-3">
                           <div className="p-2.5 bg-[#c5a880]/10 rounded-lg text-brand-gold shrink-0">
                             <Tag className="w-4 h-4" />
@@ -2274,7 +2128,8 @@ export default function AdminPanel({
                           <button
                             onClick={() => handleDeletePromo(promo.id)}
                             className="p-2 text-brand-outline/50 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
-                            title="Delete promo code">
+                            title="Delete promo code"
+                          >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -2284,6 +2139,238 @@ export default function AdminPanel({
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* activeSubTab === "users" */}
+        {activeSubTab === "users" && (
+          <div className="space-y-6">
+            {/* Top Stats Banner */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-white border border-[#c5a880]/15 rounded-xl p-4 flex items-center gap-3 shadow-xs">
+                <div className="p-3 bg-[#c5a880]/10 rounded-lg text-brand-gold">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-[10px] text-brand-outline uppercase tracking-wider font-semibold">إجمالي المستخدمين / Total Users</p>
+                  <p className="text-lg font-bold text-brand-dark font-mono">{usersList.length}</p>
+                </div>
+              </div>
+
+              <div className="bg-white border border-[#c5a880]/15 rounded-xl p-4 flex items-center gap-3 shadow-xs">
+                <div className="p-3 bg-amber-500/10 rounded-lg text-amber-600">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-[10px] text-brand-outline uppercase tracking-wider font-semibold">أعضاء الماس والنخبة / Diamond & Gold</p>
+                  <p className="text-lg font-bold text-amber-600 font-mono">
+                    {usersList.filter((u) => u.tier === "Diamond" || u.tier === "Gold" || u.tier === "Platinum").length}
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-white border border-[#c5a880]/15 rounded-xl p-4 flex items-center gap-3 shadow-xs">
+                <div className="p-3 bg-emerald-500/10 rounded-lg text-emerald-600">
+                  <Gift className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-[10px] text-brand-outline uppercase tracking-wider font-semibold">نقاط الولاء الصادرة / Total Points</p>
+                  <p className="text-lg font-bold text-emerald-600 font-mono">
+                    {usersList.reduce((acc, u) => acc + (u.loyaltyPoints || 0), 0).toLocaleString()} PTS
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Main Users Table Card */}
+            <div className="bg-[#fcf8f3] border border-[#c5a880]/20 rounded-xl p-6 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-4 border-b border-[#c5a880]/15">
+                <div className="space-y-1 text-right" dir="rtl">
+                  <h3 className="font-serif text-lg font-bold text-brand-dark flex items-center gap-2">
+                    <Users className="w-5 h-5 text-brand-gold" />
+                    <span>سجل حسابات المستخدمين والعملاء</span>
+                  </h3>
+                  <p className="text-xs text-brand-outline">
+                    إدارة بيانات الأعضاء، فئات العضوية، ورصيد النقاط التفاعلي.
+                  </p>
+                </div>
+
+                {/* Search Bar */}
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-outline/60" />
+                  <input
+                    type="text"
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    placeholder="بحث بالمستخدم..."
+                    className="w-full bg-white border border-[#c5a880]/20 rounded-lg pl-9 pr-3 py-2 text-xs text-brand-dark outline-none focus:border-brand-gold"
+                  />
+                </div>
+              </div>
+
+              {/* Users List */}
+              {usersList.length === 0 ? (
+                <div className="text-center py-12 space-y-2">
+                  <Users className="w-8 h-8 text-brand-outline/40 mx-auto" />
+                  <p className="text-xs text-brand-outline">لا يوجد مستخدمون مسجلون بعد في النظام.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-right text-xs" dir="rtl">
+                    <thead>
+                      <tr className="border-b border-[#c5a880]/15 text-[10px] text-brand-outline uppercase tracking-wider">
+                        <th className="py-3 px-3 text-right">المستخدم / User</th>
+                        <th className="py-3 px-3 text-right">البريد الإلكتروني</th>
+                        <th className="py-3 px-3 text-center">الفئة / Tier</th>
+                        <th className="py-3 px-3 text-center">نقاط الولاء</th>
+                        <th className="py-3 px-3 text-center">إجمالي المشتريات</th>
+                        <th className="py-3 px-3 text-center">الإجراءات</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#c5a880]/10">
+                      {usersList
+                        .filter((u) => 
+                          !userSearch || 
+                          u.name?.toLowerCase().includes(userSearch.toLowerCase()) || 
+                          u.email?.toLowerCase().includes(userSearch.toLowerCase())
+                        )
+                        .map((u) => {
+                          const tierColor = 
+                            u.tier === "Diamond" ? "bg-cyan-50 text-cyan-700 border-cyan-200" :
+                            u.tier === "Platinum" ? "bg-slate-100 text-slate-800 border-slate-300" :
+                            u.tier === "Gold" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                            u.tier === "Silver" ? "bg-gray-50 text-gray-700 border-gray-200" :
+                            "bg-[#f5f0eb] text-brand-umber border-[#e5d8c5]";
+
+                          return (
+                            <tr key={u.id || u.email} className="hover:bg-white/60 transition-colors">
+                              <td className="py-3 px-3 font-semibold text-brand-dark">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-8 h-8 rounded-full bg-[#a68253] text-white flex items-center justify-center font-bold text-xs uppercase shadow-xs">
+                                    {(u.name || u.email || "U")[0]}
+                                  </div>
+                                  <div>
+                                    <p className="font-bold">{u.name || "مستخدم مسجل"}</p>
+                                    <p className="text-[9px] text-brand-outline/60 font-mono" dir="ltr">{u.joinedDate ? `Joined: ${u.joinedDate}` : "Registered Member"}</p>
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-3 font-mono text-brand-dark" dir="ltr">
+                                {u.email}
+                              </td>
+
+                              <td className="py-3 px-3 text-center">
+                                <span className={`inline-block px-2.5 py-0.5 rounded-full text-[9px] font-bold border uppercase tracking-wider ${tierColor}`}>
+                                  {u.tier || "Bronze"}
+                                </span>
+                              </td>
+
+                              <td className="py-3 px-3 text-center font-mono font-bold text-brand-gold">
+                                {u.loyaltyPoints || 0} PTS
+                              </td>
+
+                              <td className="py-3 px-3 text-center font-mono font-semibold text-brand-dark">
+                                {u.totalSpent ? `${u.totalSpent} EGP` : "0 EGP"}
+                              </td>
+
+                              <td className="py-3 px-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddUserPoints(u.id || u.email, 500)}
+                                  className="px-2.5 py-1 bg-[#a68253] hover:bg-brand-dark text-white rounded text-[10px] font-bold transition-all shadow-xs"
+                                  title="إضافة 500 نقطة ولاء لهذا المستخدم"
+                                >
+                                  +500 PTS 🎁
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Reviews Sub-tab Component */}
+        {activeSubTab === "reviews" && (
+          <AdminReviewsManager
+            products={products}
+            reviews={reviews}
+            onRefreshReviews={onRefreshReviews || (() => {})}
+            triggerNotification={triggerNotification}
+          />
+        )}
+
+        {/* Security Audit Logs Sub-tab */}
+        {activeSubTab === "auditLogs" && (
+          <div className="bg-white p-6 md:p-8 space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-brand-outline-variant/20">
+              <div>
+                <h3 className="font-serif text-xl md:text-2xl font-light text-brand-umber flex items-center gap-2">
+                  <ShieldCheck className="w-6 h-6 text-emerald-600" />
+                  <span>سجل الأمان والرقابة الفورية / Security Audit Logs</span>
+                </h3>
+                <p className="text-xs text-brand-outline mt-1 font-light">
+                  سجل الأمان الفوري لجميع الحركات والعمليات الإدارية في نظام VERO (Enterprise Monitoring)
+                </p>
+              </div>
+              <button
+                onClick={fetchAuditLogs}
+                className="px-3.5 py-1.5 bg-brand-linen/40 hover:bg-brand-linen text-brand-umber text-xs font-semibold rounded border border-brand-outline-variant/30 flex items-center gap-1.5 transition-all"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>تحديث السجل / Refresh Logs</span>
+              </button>
+            </div>
+
+            {auditLogs.length === 0 ? (
+              <div className="text-center py-12 bg-brand-linen/10 rounded border border-dashed border-brand-outline-variant/30 text-brand-outline text-xs font-mono">
+                لا توجد سجلات أمان مسجلة حالياً / No security audit logs recorded yet.
+              </div>
+            ) : (
+              <div className="overflow-x-auto border border-brand-outline-variant/20 rounded-sm">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-brand-umber text-brand-linen text-[10px] uppercase font-mono tracking-wider">
+                    <tr>
+                      <th className="py-3 px-3 text-right">الوقت / Timestamp</th>
+                      <th className="py-3 px-3 text-right">الإجراء / Action</th>
+                      <th className="py-3 px-3 text-right">المستخدم / Admin</th>
+                      <th className="py-3 px-3 text-right">الهدف / Target</th>
+                      <th className="py-3 px-3 text-right">التفاصيل / Details</th>
+                      <th className="py-3 px-3 text-right">عنوان IP</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-brand-outline-variant/15 text-brand-umber font-sans">
+                    {auditLogs.map((log: any) => (
+                      <tr key={log.id} className="hover:bg-brand-linen/20 transition-colors">
+                        <td className="py-2.5 px-3 font-mono text-[10px] text-brand-outline" dir="ltr">
+                          {new Date(log.timestamp).toLocaleString("ar-EG")}
+                        </td>
+                        <td className="py-2.5 px-3 font-semibold text-brand-gold">
+                          {log.action}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-[11px] text-brand-umber">
+                          {log.userEmail || log.userId}
+                        </td>
+                        <td className="py-2.5 px-3 font-medium text-brand-dark">
+                          {log.target}
+                        </td>
+                        <td className="py-2.5 px-3 text-brand-outline text-[11px]">
+                          {log.details}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-[10px] text-emerald-600" dir="ltr">
+                          {log.ip}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2297,7 +2384,8 @@ export default function AdminPanel({
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               className="bg-[#fff8f3] border border-brand-outline-variant/35 p-6 md:p-8 max-w-md w-full shadow-2xl rounded-sm space-y-6 text-brand-umber font-sans text-right"
-              dir="rtl">
+              dir="rtl"
+            >
               <div className="text-center space-y-2">
                 <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-brand-gold/10 text-brand-gold border border-brand-gold/20 mb-2 mx-auto">
                   <ShieldCheck className="w-6 h-6" />
@@ -2306,8 +2394,7 @@ export default function AdminPanel({
                   تفويض المشرف مطلوب
                 </h3>
                 <p className="text-xs text-brand-outline font-light leading-relaxed text-center">
-                  تعديل الكتالوج محمي بكلمة سر. الرجاء إدخال الرمز لتأكيد
-                  الإجراء.
+                  تعديل الكتالوج محمي بكلمة سر. الرجاء إدخال الرمز لتأكيد الإجراء.
                   <br />
                   <span className="text-[10px] text-brand-gold font-mono block mt-1">
                     Enter password to authorize modification
@@ -2333,7 +2420,8 @@ export default function AdminPanel({
                     setPasswordError("كلمة السر غير صحيحة. حاول مرة أخرى.");
                   }
                 }}
-                className="space-y-4 text-center">
+                className="space-y-4 text-center"
+              >
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-brand-outline block text-center">
                     كلمة المرور / Password
@@ -2366,12 +2454,14 @@ export default function AdminPanel({
                       setPasswordAttempt("");
                       setPasswordError("");
                     }}
-                    className="flex-1 border border-brand-outline-variant/30 text-brand-outline hover:text-brand-umber text-xs font-semibold py-3 uppercase tracking-wider rounded-sm transition-colors bg-white text-center">
+                    className="flex-1 border border-brand-outline-variant/30 text-brand-outline hover:text-brand-umber text-xs font-semibold py-3 uppercase tracking-wider rounded-sm transition-colors bg-white text-center"
+                  >
                     إلغاء / Cancel
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 bg-brand-gold hover:bg-brand-umber text-white text-xs font-semibold py-3 uppercase tracking-wider rounded-sm transition-all shadow-sm text-center">
+                    className="flex-1 bg-brand-gold hover:bg-brand-umber text-white text-xs font-semibold py-3 uppercase tracking-wider rounded-sm transition-all shadow-sm text-center"
+                  >
                     تأكيد / Confirm
                   </button>
                 </div>
@@ -2390,7 +2480,8 @@ export default function AdminPanel({
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               className="bg-[#fff8f3] border border-brand-outline-variant/35 p-6 md:p-8 max-w-md w-full shadow-2xl rounded-sm space-y-6 text-brand-umber font-sans text-right"
-              dir="rtl">
+              dir="rtl"
+            >
               <div className="text-center space-y-2">
                 <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-rose-500/10 text-rose-500 border border-rose-500/20 mb-2 mx-auto">
                   <Trash2 className="w-6 h-6" />
@@ -2399,11 +2490,7 @@ export default function AdminPanel({
                   تأكيد حذف المنتج
                 </h3>
                 <p className="text-xs text-brand-outline font-light leading-relaxed text-center">
-                  هل أنت متأكد أنك تريد حذف منتج{" "}
-                  <strong className="font-semibold text-brand-umber">
-                    "{productToDelete.name}"
-                  </strong>{" "}
-                  من الكتالوج نهائياً؟
+                  هل أنت متأكد أنك تريد حذف منتج <strong className="font-semibold text-brand-umber">"{productToDelete.name}"</strong> من الكتالوج نهائياً؟
                   <br />
                   <span className="text-[10px] text-brand-gold font-mono block mt-1">
                     Are you sure you want to permanently delete this product?
@@ -2415,13 +2502,15 @@ export default function AdminPanel({
                 <button
                   type="button"
                   onClick={() => setProductToDelete(null)}
-                  className="flex-1 border border-brand-outline-variant/30 text-brand-outline hover:text-brand-umber text-xs font-semibold py-3 uppercase tracking-wider rounded-sm transition-colors bg-white text-center animate-pulse-none">
+                  className="flex-1 border border-brand-outline-variant/30 text-brand-outline hover:text-brand-umber text-xs font-semibold py-3 uppercase tracking-wider rounded-sm transition-colors bg-white text-center animate-pulse-none"
+                >
                   إلغاء / Cancel
                 </button>
                 <button
                   type="button"
                   onClick={confirmDeleteProduct}
-                  className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold py-3 uppercase tracking-wider rounded-sm transition-all shadow-sm text-center">
+                  className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold py-3 uppercase tracking-wider rounded-sm transition-all shadow-sm text-center"
+                >
                   حذف / Delete
                 </button>
               </div>
@@ -2439,7 +2528,8 @@ export default function AdminPanel({
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               className="bg-[#fff8f3] border border-brand-outline-variant/35 p-6 md:p-8 max-w-md w-full shadow-2xl rounded-sm space-y-6 text-brand-umber font-sans text-right"
-              dir="rtl">
+              dir="rtl"
+            >
               <div className="text-center space-y-2">
                 <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-rose-500/10 text-rose-500 border border-rose-500/20 mb-2 mx-auto">
                   <Trash2 className="w-6 h-6" />
@@ -2448,15 +2538,10 @@ export default function AdminPanel({
                   تأكيد حذف الطلب
                 </h3>
                 <p className="text-xs text-brand-outline font-light leading-relaxed text-center">
-                  هل أنت متأكد أنك تريد حذف الطلب رقم{" "}
-                  <strong className="font-semibold text-brand-umber">
-                    "#{orderToDelete.orderNumber}"
-                  </strong>{" "}
-                  من السجل نهائياً؟
+                  هل أنت متأكد أنك تريد حذف الطلب رقم <strong className="font-semibold text-brand-umber">"#{orderToDelete.orderNumber}"</strong> من السجل نهائياً؟
                   <br />
                   <span className="text-[10px] text-brand-gold font-mono block mt-1">
-                    Are you sure you want to permanently delete this order from
-                    history?
+                    Are you sure you want to permanently delete this order from history?
                   </span>
                 </p>
               </div>
@@ -2465,7 +2550,8 @@ export default function AdminPanel({
                 <button
                   type="button"
                   onClick={() => setOrderToDelete(null)}
-                  className="flex-1 border border-brand-outline-variant/30 text-brand-outline hover:text-brand-umber text-xs font-semibold py-3 uppercase tracking-wider rounded-sm transition-colors bg-white text-center">
+                  className="flex-1 border border-brand-outline-variant/30 text-brand-outline hover:text-brand-umber text-xs font-semibold py-3 uppercase tracking-wider rounded-sm transition-colors bg-white text-center"
+                >
                   إلغاء / Cancel
                 </button>
                 <button
@@ -2476,7 +2562,8 @@ export default function AdminPanel({
                       setOrderToDelete(null);
                     });
                   }}
-                  className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold py-3 uppercase tracking-wider rounded-sm transition-all shadow-sm text-center animate-pulse-none">
+                  className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold py-3 uppercase tracking-wider rounded-sm transition-all shadow-sm text-center animate-pulse-none"
+                >
                   حذف / Delete
                 </button>
               </div>
@@ -2494,7 +2581,8 @@ export default function AdminPanel({
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               className="bg-[#fff8f3] border border-brand-outline-variant/35 p-6 md:p-8 max-w-md w-full shadow-2xl rounded-sm space-y-6 text-brand-umber font-sans text-right"
-              dir="rtl">
+              dir="rtl"
+            >
               <div className="text-center space-y-2">
                 <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-brand-gold/10 text-brand-gold border border-brand-gold/20 mb-2 mx-auto">
                   <RefreshCw className="w-6 h-6" />
@@ -2503,12 +2591,10 @@ export default function AdminPanel({
                   تأكيد إعادة ضبط المتجر
                 </h3>
                 <p className="text-xs text-brand-outline font-light leading-relaxed text-center">
-                  هل أنت متأكد أنك تريد إعادة تعيين المتجر إلى المنتجات والخطوط
-                  المنسقة الأصلية؟ سيتم تجاهل كافة التغييرات المخصصة.
+                  هل أنت متأكد أنك تريد إعادة تعيين المتجر إلى المنتجات والخطوط المنسقة الأصلية؟ سيتم تجاهل كافة التغييرات المخصصة.
                   <br />
                   <span className="text-[10px] text-brand-gold font-mono block mt-1">
-                    Reset boutique back to curated defaults? All custom
-                    additions will be lost.
+                    Reset boutique back to curated defaults? All custom additions will be lost.
                   </span>
                 </p>
               </div>
@@ -2517,7 +2603,8 @@ export default function AdminPanel({
                 <button
                   type="button"
                   onClick={() => setShowResetConfirm(false)}
-                  className="flex-1 border border-brand-outline-variant/30 text-brand-outline hover:text-brand-umber text-xs font-semibold py-3 uppercase tracking-wider rounded-sm transition-colors bg-white text-center">
+                  className="flex-1 border border-brand-outline-variant/30 text-brand-outline hover:text-brand-umber text-xs font-semibold py-3 uppercase tracking-wider rounded-sm transition-colors bg-white text-center"
+                >
                   إلغاء / Cancel
                 </button>
                 <button
@@ -2529,8 +2616,55 @@ export default function AdminPanel({
                       setShowResetConfirm(false);
                     });
                   }}
-                  className="flex-1 bg-brand-gold hover:bg-brand-umber text-white text-xs font-semibold py-3 uppercase tracking-wider rounded-sm transition-all shadow-sm text-center">
+                  className="flex-1 bg-brand-gold hover:bg-brand-umber text-white text-xs font-semibold py-3 uppercase tracking-wider rounded-sm transition-all shadow-sm text-center"
+                >
                   إعادة تعيين / Reset
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Clear All Products Confirmation Overlay Modal */}
+        {showClearAllConfirm && (
+          <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-[#fff8f3] border border-brand-outline-variant/35 p-6 md:p-8 max-w-md w-full shadow-2xl rounded-sm space-y-6 text-brand-umber font-sans text-right"
+              dir="rtl"
+            >
+              <div className="text-center space-y-2">
+                <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-rose-500/10 text-rose-500 border border-rose-500/20 mb-2 mx-auto">
+                  <Trash2 className="w-6 h-6" />
+                </span>
+                <h3 className="font-serif text-xl tracking-wide font-normal text-center">
+                  تأكيد حذف جميع المنتجات
+                </h3>
+                <p className="text-xs text-brand-outline font-light leading-relaxed text-center">
+                  هل أنت متأكد أنك تريد مسح كافة المنتجات من الكتالوج نهائياً؟
+                  <br />
+                  <span className="text-[10px] text-brand-gold font-mono block mt-1">
+                    Are you sure you want to permanently clear all products from the catalog?
+                  </span>
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowClearAllConfirm(false)}
+                  className="flex-1 border border-brand-outline-variant/30 text-brand-outline hover:text-brand-umber text-xs font-semibold py-3 uppercase tracking-wider rounded-sm transition-colors bg-white text-center"
+                >
+                  إلغاء / Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearAllProducts}
+                  className="flex-1 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold py-3 uppercase tracking-wider rounded-sm transition-all shadow-sm text-center"
+                >
+                  حذف الكل / Clear All
                 </button>
               </div>
             </motion.div>

@@ -1,7 +1,8 @@
 import React from "react";
-import { X, ShoppingBag, Heart, Check, Sparkles } from "lucide-react";
-import { Product } from "../types";
+import { X, ShoppingBag, Heart, Check, Sparkles, Star } from "lucide-react";
+import { Product, UserProfile, Order, Review } from "../types";
 import { motion, AnimatePresence } from "motion/react";
+import ProductReviewsSection from "./ProductReviewsSection";
 
 interface QuickViewModalProps {
   product: Product | null;
@@ -9,6 +10,11 @@ interface QuickViewModalProps {
   onAddToBag: (product: Product, material: string, size: string) => void;
   isFavorited: boolean;
   toggleFavorite: (product: Product) => void;
+  user?: UserProfile | null;
+  userOrders?: Order[];
+  allReviews?: Review[];
+  onRefreshReviews?: () => void;
+  onOpenAuth?: () => void;
 }
 
 export default function QuickViewModal({
@@ -17,15 +23,20 @@ export default function QuickViewModal({
   onAddToBag,
   isFavorited,
   toggleFavorite,
+  user = null,
+  userOrders = [],
+  allReviews = [],
+  onRefreshReviews = () => {},
+  onOpenAuth,
 }: QuickViewModalProps) {
   if (!product) return null;
 
   // Selected state within Quick View
   const [selectedMaterial, setSelectedMaterial] = React.useState(
-    product.materialOptions?.[0] || "",
+    product.materialOptions?.[0] || ""
   );
   const [selectedSize, setSelectedSize] = React.useState(
-    product.sizeOptions?.[0] || "One Size",
+    product.sizeOptions?.[0] || "One Size"
   );
   const [successMsg, setSuccessMsg] = React.useState(false);
   const [activeImage, setActiveImage] = React.useState(product.image);
@@ -63,12 +74,14 @@ export default function QuickViewModal({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           transition={{ type: "spring", duration: 0.5 }}
-          className="relative bg-brand-linen max-w-4xl w-full max-h-[90vh] md:max-h-auto overflow-y-auto md:overflow-visible grid grid-cols-1 md:grid-cols-12 shadow-2xl border border-brand-outline-variant/30">
+          className="relative bg-brand-linen max-w-4xl w-full max-h-[90vh] md:max-h-auto overflow-y-auto md:overflow-visible grid grid-cols-1 md:grid-cols-12 shadow-2xl border border-brand-outline-variant/30"
+        >
           {/* Close button */}
           <button
             onClick={onClose}
             className="absolute top-4 right-4 z-10 p-2 text-brand-outline hover:text-brand-gold transition-colors bg-[#fff8f3]/60 backdrop-blur-md rounded-full border border-brand-outline-variant/20"
-            aria-label="Close">
+            aria-label="Close"
+          >
             <X className="w-5 h-5" />
           </button>
 
@@ -87,7 +100,7 @@ export default function QuickViewModal({
                 </span>
               )}
             </div>
-
+            
             {/* Secondary images gallery inside modal */}
             {product.secondaryImages && product.secondaryImages.length > 1 && (
               <div className="grid grid-cols-5 gap-2 mt-auto">
@@ -99,7 +112,8 @@ export default function QuickViewModal({
                       activeImage === img
                         ? "border-brand-gold ring-2 ring-brand-gold/10 scale-[0.98]"
                         : "border-brand-outline-variant/30 hover:border-brand-gold/40"
-                    }`}>
+                    }`}
+                  >
                     <img
                       src={img}
                       alt={`Thumbnail ${i + 1}`}
@@ -137,8 +151,7 @@ export default function QuickViewModal({
                     </span>
                   ) : (
                     <span className="text-xs text-brand-umber font-semibold bg-brand-gold/10 border border-brand-gold/20 px-3 py-1.5 rounded inline-block font-sans">
-                      الكمية المتبقية: {product.stock} قطع / Only{" "}
-                      {product.stock} left in stock
+                      الكمية المتبقية: {product.stock} قطع / Only {product.stock} left in stock
                     </span>
                   )}
                 </div>
@@ -155,28 +168,28 @@ export default function QuickViewModal({
               </p>
 
               {/* Selection: Materials */}
-              {product.materialOptions &&
-                product.materialOptions.length > 0 && (
-                  <div className="mb-6">
-                    <h4 className="text-[10px] font-semibold uppercase tracking-[0.15em] text-brand-umber mb-3">
-                      Select Material
-                    </h4>
-                    <div className="flex gap-3">
-                      {product.materialOptions.map((hex, i) => (
-                        <button
-                          key={i}
-                          onClick={() => setSelectedMaterial(hex)}
-                          className={`w-7 h-7 rounded-full border transition-all duration-300 relative flex items-center justify-center`}
-                          style={{ backgroundColor: hex }}
-                          title={hex}>
-                          {selectedMaterial === hex && (
-                            <Check className="w-3.5 h-3.5 text-brand-gold mix-blend-difference" />
-                          )}
-                        </button>
-                      ))}
-                    </div>
+              {product.materialOptions && product.materialOptions.length > 0 && (
+                <div className="mb-6">
+                  <h4 className="text-[10px] font-semibold uppercase tracking-[0.15em] text-brand-umber mb-3">
+                    Select Material
+                  </h4>
+                  <div className="flex gap-3">
+                    {product.materialOptions.map((hex, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setSelectedMaterial(hex)}
+                        className={`w-7 h-7 rounded-full border transition-all duration-300 relative flex items-center justify-center`}
+                        style={{ backgroundColor: hex }}
+                        title={hex}
+                      >
+                        {selectedMaterial === hex && (
+                          <Check className="w-3.5 h-3.5 text-brand-gold mix-blend-difference" />
+                        )}
+                      </button>
+                    ))}
                   </div>
-                )}
+                </div>
+              )}
 
               {/* Selection: Size */}
               {product.sizeOptions && product.sizeOptions.length > 0 && (
@@ -193,7 +206,8 @@ export default function QuickViewModal({
                           selectedSize === size
                             ? "bg-brand-gold text-white border-brand-gold font-medium"
                             : "bg-transparent text-brand-outline border-brand-outline-variant hover:border-brand-gold"
-                        }`}>
+                        }`}
+                      >
                         {size}
                       </button>
                     ))}
@@ -212,9 +226,12 @@ export default function QuickViewModal({
                     product.stock === 0
                       ? "bg-rose-700/85 hover:bg-rose-700/85 text-white cursor-not-allowed"
                       : "bg-brand-gold hover:bg-brand-umber disabled:bg-brand-gold/80 text-white"
-                  }`}>
+                  }`}
+                >
                   {product.stock === 0 ? (
-                    <>OUT OF STOCK</>
+                    <>
+                      OUT OF STOCK
+                    </>
                   ) : successMsg ? (
                     <>
                       <Check className="w-4 h-4 stroke-[2]" />
@@ -235,12 +252,9 @@ export default function QuickViewModal({
                       ? "bg-brand-gold/10 text-brand-gold border-brand-gold/20"
                       : "bg-transparent text-brand-outline border-brand-outline-variant hover:border-brand-gold"
                   }`}
-                  aria-label={
-                    isFavorited ? "Remove from Favorites" : "Add to Favorites"
-                  }>
-                  <Heart
-                    className={`w-4 h-4 ${isFavorited ? "fill-current" : ""}`}
-                  />
+                  aria-label={isFavorited ? "Remove from Favorites" : "Add to Favorites"}
+                >
+                  <Heart className={`w-4 h-4 ${isFavorited ? "fill-current" : ""}`} />
                 </button>
               </div>
 
@@ -250,6 +264,20 @@ export default function QuickViewModal({
                 </span>
               </div>
             </div>
+          </div>
+
+          {/* Full Product Reviews & Ratings Section */}
+          <div className="md:col-span-12 p-6 md:p-10 border-t border-brand-outline-variant/20 bg-white">
+            <ProductReviewsSection
+              productId={product.id}
+              productName={product.name}
+              productImage={product.image}
+              user={user}
+              userOrders={userOrders}
+              allReviews={allReviews}
+              onRefreshReviews={onRefreshReviews}
+              onOpenAuth={onOpenAuth}
+            />
           </div>
         </motion.div>
       </div>

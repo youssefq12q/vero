@@ -11,6 +11,7 @@ import {
   Sparkles,
   Lock,
   ArrowRight,
+  ArrowLeft,
   ShieldCheck,
   Award,
   Gem,
@@ -26,15 +27,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
-import {
-  Product,
-  CartItem,
-  UserProfile,
-  getTierFromSpent,
-  Order,
-  Reward,
-  Promo,
-} from "./types";
+import { Product, CartItem, UserProfile, getTierFromSpent, Order, Reward, Promo, Review } from "./types";
 import { CATEGORIES, PRODUCTS, STORIES } from "./data";
 
 // Subcomponents
@@ -46,15 +39,11 @@ import QuickViewModal from "./components/QuickViewModal";
 import BrandPillars from "./components/BrandPillars";
 import CheckoutFlow from "./components/CheckoutFlow";
 import AdminPanel from "./components/AdminPanel";
+import OrderTrackingView from "./components/OrderTrackingView";
 import AuthModal from "./components/AuthModal";
 import SupabasePlayground from "./components/SupabasePlayground";
-import {
-  isSupabaseConfigured,
-  supabase,
-  cartService,
-  wishlistService,
-  authService,
-} from "./services/supabaseService";
+import { isSupabaseConfigured, supabase, cartService, wishlistService, authService } from "./services/supabaseService";
+
 
 const LOUNGE_PRODUCTS: Product[] = [
   {
@@ -63,16 +52,12 @@ const LOUNGE_PRODUCTS: Product[] = [
     price: 125000,
     categoryId: "rings",
     categoryName: "Rings",
-    description:
-      "An absolute masterwork of 18k platinum adorned with certified brilliant-cut diamonds. Exclusively hand-forged inside our private Florence vault.",
+    description: "An absolute masterwork of 18k platinum adorned with certified brilliant-cut diamonds. Exclusively hand-forged inside our private Florence vault.",
     tagline: "Absolute Masterpiece",
-    image:
-      "https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=800&auto=format&fit=crop&q=80",
-    secondaryImages: [
-      "https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=800&auto=format&fit=crop&q=80",
-    ],
+    image: "https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=800&auto=format&fit=crop&q=80",
+    secondaryImages: ["https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=800&auto=format&fit=crop&q=80"],
     isNew: true,
-    stock: 1,
+    stock: 1
   },
   {
     id: "lounge-item-2",
@@ -80,16 +65,12 @@ const LOUNGE_PRODUCTS: Product[] = [
     price: 280000,
     categoryId: "necklaces",
     categoryName: "Necklaces",
-    description:
-      "A cascade of premium teardrop diamonds set on a pure solid platinum chain. Reflects the light of the Florentine stars.",
+    description: "A cascade of premium teardrop diamonds set on a pure solid platinum chain. Reflects the light of the Florentine stars.",
     tagline: "Celestial Splendor",
-    image:
-      "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=800&auto=format&fit=crop&q=80",
-    secondaryImages: [
-      "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=800&auto=format&fit=crop&q=80",
-    ],
+    image: "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=800&auto=format&fit=crop&q=80",
+    secondaryImages: ["https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=800&auto=format&fit=crop&q=80"],
     isNew: true,
-    stock: 1,
+    stock: 1
   },
   {
     id: "lounge-item-3",
@@ -97,17 +78,13 @@ const LOUNGE_PRODUCTS: Product[] = [
     price: 195000,
     categoryId: "bracelets",
     categoryName: "Bracelets",
-    description:
-      "Hand-finished using a patented marquise interlocking link technique, embedded with rare icy-blue micro-diamonds.",
+    description: "Hand-finished using a patented marquise interlocking link technique, embedded with rare icy-blue micro-diamonds.",
     tagline: "Artisanal Grace",
-    image:
-      "https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=800&auto=format&fit=crop&q=80",
-    secondaryImages: [
-      "https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=800&auto=format&fit=crop&q=80",
-    ],
+    image: "https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=800&auto=format&fit=crop&q=80",
+    secondaryImages: ["https://images.unsplash.com/photo-1611591437281-460bfbe1220a?w=800&auto=format&fit=crop&q=80"],
     isNew: true,
-    stock: 1,
-  },
+    stock: 1
+  }
 ];
 
 export default function App() {
@@ -149,12 +126,7 @@ export default function App() {
   const welcomedRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
-    if (
-      user &&
-      (user.tier === "Gold" ||
-        user.tier === "Platinum" ||
-        user.tier === "Diamond")
-    ) {
+    if (user && (user.tier === "Gold" || user.tier === "Platinum" || user.tier === "Diamond")) {
       if (welcomedRef.current !== user.email) {
         setShowGoldWelcome(true);
         setWelcomeTier(user.tier);
@@ -170,10 +142,7 @@ export default function App() {
   }, [user]);
 
   React.useEffect(() => {
-    if (
-      activeTab === "admin" &&
-      user?.email?.toLowerCase() !== "vero2026@vero.com"
-    ) {
+    if ((activeTab === "admin" || activeTab === "supabase") && user?.role !== "admin") {
       setActiveTab("home");
     }
   }, [activeTab, user]);
@@ -181,12 +150,13 @@ export default function App() {
   const handleLoginSuccess = async (profile: UserProfile) => {
     setUser(profile);
     localStorage.setItem("vero_user", JSON.stringify(profile));
+    if (profile.sessionToken) {
+      localStorage.setItem("vero_session_token", profile.sessionToken);
+    }
 
     if (isSupabaseConfigured() && profile.email) {
       try {
-        const {
-          data: { user: authUser },
-        } = await supabase!.auth.getUser();
+        const { data: { user: authUser } } = await supabase!.auth.getUser();
         if (authUser) {
           const dbCart = await cartService.getCart(authUser.id);
           if (dbCart && dbCart.length > 0) {
@@ -210,7 +180,7 @@ export default function App() {
 
     const resolvedProfile: UserProfile = {
       ...updatedProfile,
-      tier: finalTier,
+      tier: finalTier
     };
 
     setUser(resolvedProfile);
@@ -218,9 +188,7 @@ export default function App() {
 
     if (isSupabaseConfigured()) {
       try {
-        const {
-          data: { user: authUser },
-        } = await supabase!.auth.getUser();
+        const { data: { user: authUser } } = await supabase!.auth.getUser();
         if (authUser) {
           await authService.updateProfile(authUser.id, resolvedProfile);
         }
@@ -228,7 +196,7 @@ export default function App() {
         console.error("Error updating profile in Supabase:", e);
       }
     }
-
+    
     // Also update in website accounts if registered
     if (resolvedProfile.provider === "email") {
       const savedAccountsStr = localStorage.getItem("vero_website_accounts");
@@ -244,12 +212,9 @@ export default function App() {
               avatar: resolvedProfile.avatar,
               loyaltyPoints: resolvedProfile.loyaltyPoints,
               totalSpent: resolvedProfile.totalSpent,
-              redeemedRewards: resolvedProfile.redeemedRewards,
+              redeemedRewards: resolvedProfile.redeemedRewards
             };
-            localStorage.setItem(
-              "vero_website_accounts",
-              JSON.stringify(accounts),
-            );
+            localStorage.setItem("vero_website_accounts", JSON.stringify(accounts));
           }
         } catch (e) {
           // ignore
@@ -259,10 +224,21 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    const token = localStorage.getItem("vero_session_token");
+    if (token) {
+      fetch("/api/auth/logout", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}`, "X-Session-Token": token }
+      }).catch(() => {});
+    }
     setUser(null);
     localStorage.removeItem("vero_user");
+    localStorage.removeItem("vero_session_token");
     setCart([]);
     setFavorites([]);
+    if (activeTab === "admin" || activeTab === "supabase") {
+      setActiveTab("home");
+    }
     if (isSupabaseConfigured()) {
       authService.signOut().catch(console.error);
     }
@@ -284,41 +260,56 @@ export default function App() {
     return PRODUCTS;
   });
 
+  const productsRef = React.useRef(products);
+  React.useEffect(() => {
+    productsRef.current = products;
+    try {
+      localStorage.setItem("vero_products", JSON.stringify(products));
+    } catch (e) {
+      // ignore
+    }
+  }, [products]);
+
   // Intercept state changes and synchronize with the backend Express server securely
-  const setProducts: React.Dispatch<React.SetStateAction<Product[]>> = (
-    value,
-  ) => {
+  const setProducts: React.Dispatch<React.SetStateAction<Product[]>> = (value) => {
+    const currentProducts = productsRef.current;
     // 1. Calculate the next products array
     let next: Product[];
     if (typeof value === "function") {
-      next = (value as Function)(products);
+      next = (value as Function)(currentProducts);
     } else {
       next = value;
     }
 
     // 2. Optimistically update client state immediately
     setProductsState(next);
+    try {
+      localStorage.setItem("vero_products", JSON.stringify(next));
+    } catch (e) {
+      // ignore
+    }
 
     // 3. Perform background API sync to persist to server disk
     const syncWithServer = async () => {
       try {
-        if (next.length < products.length) {
+        if (next.length < currentProducts.length) {
           // Delete product
-          const removed = products.find(
-            (p) => !next.some((n) => n.id === p.id),
-          );
+          const removed = currentProducts.find((p) => !next.some((n) => n.id === p.id));
           if (removed) {
             const res = await fetch(`/api/products/${removed.id}`, {
               method: "DELETE",
             });
             if (res.ok) {
               const serverProducts = await res.json();
-              setProductsState(serverProducts);
+              if (Array.isArray(serverProducts)) {
+                setProductsState(serverProducts);
+                localStorage.setItem("vero_products", JSON.stringify(serverProducts));
+              }
             }
           }
-        } else if (next.length > products.length) {
+        } else if (next.length > currentProducts.length) {
           // Add product
-          const added = next.find((n) => !products.some((p) => p.id === n.id));
+          const added = next.find((n) => !currentProducts.some((p) => p.id === n.id));
           if (added) {
             const res = await fetch("/api/products", {
               method: "POST",
@@ -327,18 +318,18 @@ export default function App() {
             });
             if (res.ok) {
               const serverProducts = await res.json();
-              setProductsState(serverProducts);
+              if (Array.isArray(serverProducts)) {
+                setProductsState(serverProducts);
+                localStorage.setItem("vero_products", JSON.stringify(serverProducts));
+              }
             }
           }
         } else {
           // Edit or Badge status toggle
           let modified: Product | null = null;
           for (let i = 0; i < next.length; i++) {
-            const prevItem = products.find((p) => p.id === next[i].id);
-            if (
-              prevItem &&
-              JSON.stringify(prevItem) !== JSON.stringify(next[i])
-            ) {
+            const prevItem = currentProducts.find((p) => p.id === next[i].id);
+            if (prevItem && JSON.stringify(prevItem) !== JSON.stringify(next[i])) {
               modified = next[i];
               break;
             }
@@ -351,7 +342,10 @@ export default function App() {
             });
             if (res.ok) {
               const serverProducts = await res.json();
-              setProductsState(serverProducts);
+              if (Array.isArray(serverProducts)) {
+                setProductsState(serverProducts);
+                localStorage.setItem("vero_products", JSON.stringify(serverProducts));
+              }
             }
           }
         }
@@ -369,6 +363,34 @@ export default function App() {
   const [rewards, setRewards] = React.useState<Reward[]>([]);
   // Promos State
   const [promos, setPromos] = React.useState<Promo[]>([]);
+  // Reviews State
+  const [allReviews, setAllReviews] = React.useState<Review[]>([]);
+
+  const fetchReviews = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/reviews");
+      if (res.ok) {
+        const data = await res.json();
+        setAllReviews(data);
+      }
+    } catch (err) {
+      console.error("Error fetching reviews from server:", err);
+    }
+  }, []);
+
+  const productRatingMap = React.useMemo(() => {
+    const map: Record<string, { sum: number; count: number }> = {};
+    allReviews.forEach((r) => {
+      if (r.status === "approved" || !r.status) {
+        if (!map[r.productId]) {
+          map[r.productId] = { sum: 0, count: 0 };
+        }
+        map[r.productId].sum += r.rating || 5;
+        map[r.productId].count += 1;
+      }
+    });
+    return map;
+  }, [allReviews]);
 
   const fetchOrders = React.useCallback(async () => {
     try {
@@ -411,8 +433,13 @@ export default function App() {
       const res = await fetch("/api/products");
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
+        if (Array.isArray(data)) {
           setProductsState(data);
+          try {
+            localStorage.setItem("vero_products", JSON.stringify(data));
+          } catch (e) {
+            // ignore
+          }
         }
       }
     } catch (err) {
@@ -426,6 +453,7 @@ export default function App() {
     fetchOrders();
     fetchRewards();
     fetchPromos();
+    fetchReviews();
 
     // Fallback polling in case of connection drop
     const interval = setInterval(() => {
@@ -433,6 +461,7 @@ export default function App() {
       fetchOrders();
       fetchRewards();
       fetchPromos();
+      fetchReviews();
     }, 10000);
 
     let eventSource: EventSource | null = null;
@@ -452,6 +481,7 @@ export default function App() {
           fetchOrders();
           fetchRewards();
           fetchPromos();
+          fetchReviews();
         }
       };
 
@@ -474,7 +504,7 @@ export default function App() {
   }, [fetchProducts, fetchOrders, fetchRewards, fetchPromos]);
 
   const [selectedProduct, setSelectedProduct] = React.useState<Product | null>(
-    products.find((p) => p.id === "sculpted-aurelian-ring") || products[0],
+    products.find((p) => p.id === "sculpted-aurelian-ring") || products[0]
   );
 
   // Keep selectedProduct object in sync with incoming server edits
@@ -519,12 +549,11 @@ export default function App() {
   const [searchQuery, setSearchQuery] = React.useState("");
   const [selectedCategory, setSelectedCategory] = React.useState("all");
   const [sortBy, setSortBy] = React.useState("default"); // 'default', 'price-asc', 'price-desc', 'name-asc'
-
+  
   // Modals & Panels
-  const [quickViewProduct, setQuickViewProduct] =
-    React.useState<Product | null>(null);
+  const [quickViewProduct, setQuickViewProduct] = React.useState<Product | null>(null);
   const [checkoutOpen, setCheckoutOpen] = React.useState(false);
-
+  
   // Promo code & calculation states
   const [promoInput, setPromoInput] = React.useState("");
   const [activePromo, setActivePromo] = React.useState("");
@@ -532,9 +561,7 @@ export default function App() {
   const [promoSuccess, setPromoSuccess] = React.useState("");
 
   // App-wide toast notification state
-  const [appNotification, setAppNotification] = React.useState<string | null>(
-    null,
-  );
+  const [appNotification, setAppNotification] = React.useState<string | null>(null);
   const triggerAppNotification = (msg: string) => {
     setAppNotification(msg);
     setTimeout(() => {
@@ -568,25 +595,15 @@ export default function App() {
     if (isSupabaseConfigured() && user) {
       supabase!.auth.getUser().then(({ data: { user: authUser } }) => {
         if (authUser) {
-          supabase!
-            .from("wishlist")
-            .delete()
-            .eq("user_id", authUser.id)
-            .then(() => {
-              if (favorites.length > 0) {
-                const rows = favorites.map((id) => ({
-                  user_id: authUser.id,
-                  product_id: id,
-                }));
-                supabase!
-                  .from("wishlist")
-                  .insert(rows)
-                  .then(
-                    () => {},
-                    (err) => console.error("Error syncing wishlist:", err),
-                  );
-              }
-            });
+          supabase!.from("wishlist").delete().eq("user_id", authUser.id).then(() => {
+            if (favorites.length > 0) {
+              const rows = favorites.map(id => ({ user_id: authUser.id, product_id: id }));
+              supabase!.from("wishlist").insert(rows).then(
+                () => {},
+                (err) => console.error("Error syncing wishlist:", err)
+              );
+            }
+          });
         }
       });
     }
@@ -598,23 +615,19 @@ export default function App() {
 
   React.useEffect(() => {
     if (isSupabaseConfigured()) {
-      const {
-        data: { subscription },
-      } = supabase!.auth.onAuthStateChange(async (event, session) => {
+      const { data: { subscription } } = supabase!.auth.onAuthStateChange(async (event, session) => {
         if (session?.user) {
           const profile = await authService.getProfile(session.user.id);
           if (profile) {
             setUser(profile);
             localStorage.setItem("vero_user", JSON.stringify(profile));
-
+            
             // Sync cart & favorites
             const dbCart = await cartService.getCart(session.user.id);
             if (dbCart && dbCart.length > 0) {
               setCart(dbCart);
             }
-            const dbWishlist = await wishlistService.getWishlist(
-              session.user.id,
-            );
+            const dbWishlist = await wishlistService.getWishlist(session.user.id);
             if (dbWishlist && dbWishlist.length > 0) {
               setFavorites(dbWishlist);
             }
@@ -652,20 +665,13 @@ export default function App() {
   }, [selectedProduct]);
 
   // Cart operations
-  const handleAddToBag = (
-    product: Product,
-    material: string,
-    size: string,
-    quantity = 1,
-  ) => {
+  const handleAddToBag = (product: Product, material: string, size: string, quantity = 1) => {
     const latestProduct = products.find((p) => p.id === product.id) || product;
     const stockLimit = latestProduct.stock;
 
     if (stockLimit !== undefined) {
       if (stockLimit === 0) {
-        triggerAppNotification(
-          `عذراً، هذا المنتج غير متوفر حالياً بالمخزن! / Sorry, this item is out of stock!`,
-        );
+        triggerAppNotification(`عذراً، هذا المنتج غير متوفر حالياً بالمخزن! / Sorry, this item is out of stock!`);
         return;
       }
     }
@@ -675,13 +681,8 @@ export default function App() {
 
     setCart((prevCart) => {
       const existing = prevCart.find((item) => item.id === cartItemId);
-      const otherItemsOfProduct = prevCart.filter(
-        (item) => item.product.id === product.id && item.id !== cartItemId,
-      );
-      const otherQty = otherItemsOfProduct.reduce(
-        (sum, item) => sum + item.quantity,
-        0,
-      );
+      const otherItemsOfProduct = prevCart.filter((item) => item.product.id === product.id && item.id !== cartItemId);
+      const otherQty = otherItemsOfProduct.reduce((sum, item) => sum + item.quantity, 0);
 
       if (existing) {
         const proposedQty = existing.quantity + quantity;
@@ -692,11 +693,15 @@ export default function App() {
             return prevCart;
           }
           return prevCart.map((item) =>
-            item.id === cartItemId ? { ...item, quantity: allowedQty } : item,
+            item.id === cartItemId
+              ? { ...item, quantity: allowedQty }
+              : item
           );
         }
         return prevCart.map((item) =>
-          item.id === cartItemId ? { ...item, quantity: proposedQty } : item,
+          item.id === cartItemId
+            ? { ...item, quantity: proposedQty }
+            : item
         );
       } else {
         if (stockLimit !== undefined && quantity + otherQty > stockLimit) {
@@ -705,38 +710,16 @@ export default function App() {
           if (allowedQty <= 0) {
             return prevCart;
           }
-          return [
-            ...prevCart,
-            {
-              id: cartItemId,
-              product,
-              quantity: allowedQty,
-              selectedMaterial: material,
-              selectedSize: size,
-            },
-          ];
+          return [...prevCart, { id: cartItemId, product, quantity: allowedQty, selectedMaterial: material, selectedSize: size }];
         }
-        return [
-          ...prevCart,
-          {
-            id: cartItemId,
-            product,
-            quantity,
-            selectedMaterial: material,
-            selectedSize: size,
-          },
-        ];
+        return [...prevCart, { id: cartItemId, product, quantity, selectedMaterial: material, selectedSize: size }];
       }
     });
 
     if (exceededStock && stockLimit !== undefined) {
-      triggerAppNotification(
-        `عذراً، تم تحديد الكمية لتتناسب مع المخزن المتوفر (${stockLimit} قطع)! / Sorry, quantity limited to available stock (${stockLimit} items)!`,
-      );
+      triggerAppNotification(`عذراً، تم تحديد الكمية لتتناسب مع المخزن المتوفر (${stockLimit} قطع)! / Sorry, quantity limited to available stock (${stockLimit} items)!`);
     } else {
-      triggerAppNotification(
-        `تمت إضافة "${product.name}" إلى حقيبتك! / "${product.name}" added to your bag!`,
-      );
+      triggerAppNotification(`تمت إضافة "${product.name}" إلى حقيبتك! / "${product.name}" added to your bag!`);
     }
   };
 
@@ -748,19 +731,12 @@ export default function App() {
       const targetItem = prevCart.find((item) => item.id === itemId);
       if (!targetItem) return prevCart;
 
-      const latestProduct =
-        products.find((p) => p.id === targetItem.product.id) ||
-        targetItem.product;
+      const latestProduct = products.find((p) => p.id === targetItem.product.id) || targetItem.product;
       const stockLimit = latestProduct.stock;
 
       if (stockLimit !== undefined) {
-        const otherItems = prevCart.filter(
-          (item) => item.product.id === latestProduct.id && item.id !== itemId,
-        );
-        const otherQty = otherItems.reduce(
-          (sum, item) => sum + item.quantity,
-          0,
-        );
+        const otherItems = prevCart.filter((item) => item.product.id === latestProduct.id && item.id !== itemId);
+        const otherQty = otherItems.reduce((sum, item) => sum + item.quantity, 0);
         const newQty = targetItem.quantity + delta;
 
         if (newQty + otherQty > stockLimit) {
@@ -768,7 +744,7 @@ export default function App() {
           limitAmount = stockLimit;
           const allowedQty = Math.max(1, stockLimit - otherQty);
           return prevCart.map((item) =>
-            item.id === itemId ? { ...item, quantity: allowedQty } : item,
+            item.id === itemId ? { ...item, quantity: allowedQty } : item
           );
         }
       }
@@ -783,9 +759,7 @@ export default function App() {
     });
 
     if (exceededStock) {
-      triggerAppNotification(
-        `عذراً، لقد وصلت للحد الأقصى للمخزن المتوفر (${limitAmount} قطع)! / Sorry, you have reached the maximum available stock (${limitAmount} items)!`,
-      );
+      triggerAppNotification(`عذراً، لقد وصلت للحد الأقصى للمخزن المتوفر (${limitAmount} قطع)! / Sorry, you have reached the maximum available stock (${limitAmount} items)!`);
     }
   };
 
@@ -802,16 +776,16 @@ export default function App() {
     try {
       const saved = localStorage.getItem("vero_orders");
       const local: any[] = saved ? JSON.parse(saved) : [];
-
+      
       const userEmail = user?.email?.toLowerCase();
-      const serverUserOrders = userEmail
-        ? orders.filter((o) => o.shippingEmail?.toLowerCase() === userEmail)
+      const serverUserOrders = userEmail 
+        ? orders.filter(o => o.shippingEmail?.toLowerCase() === userEmail)
         : [];
 
       const allOrdersMap = new Map<string, any>();
 
       // First, add all server orders for this user
-      serverUserOrders.forEach((o) => {
+      serverUserOrders.forEach(o => {
         const key = o.orderNumber?.toString() || o.id;
         allOrdersMap.set(key, {
           id: o.id,
@@ -822,19 +796,15 @@ export default function App() {
           itemsCount: o.items?.length || 0,
           itemName: o.items?.[0]?.product?.name || "Boutique Order",
           email: o.shippingEmail,
-          items: o.items,
+          items: o.items
         });
       });
 
       // Next, merge local orders
-      local.forEach((localOrd) => {
+      local.forEach(localOrd => {
         const key = localOrd.orderNumber?.toString() || localOrd.id;
-        const liveOrd = orders.find(
-          (o) =>
-            o.orderNumber?.toString() === localOrd.orderNumber?.toString() ||
-            o.id === localOrd.id,
-        );
-
+        const liveOrd = orders.find(o => o.orderNumber?.toString() === localOrd.orderNumber?.toString() || o.id === localOrd.id);
+        
         if (liveOrd) {
           allOrdersMap.set(key, {
             ...localOrd,
@@ -844,7 +814,7 @@ export default function App() {
             status: liveOrd.status,
             items: liveOrd.items || localOrd.items,
             total: liveOrd.total || localOrd.total,
-            email: liveOrd.shippingEmail || localOrd.email,
+            email: liveOrd.shippingEmail || localOrd.email
           });
         } else {
           if (!allOrdersMap.has(key)) {
@@ -866,9 +836,7 @@ export default function App() {
 
     const query = (customQuery || trackInput).trim().toLowerCase();
     if (!query) {
-      setTrackError(
-        "الرجاء إدخال رقم الطلب أو البريد الإلكتروني / Please enter an order number or email",
-      );
+      setTrackError("الرجاء إدخال رقم الطلب أو البريد الإلكتروني / Please enter an order number or email");
       return;
     }
 
@@ -878,7 +846,7 @@ export default function App() {
       (o) =>
         o.orderNumber?.toString() === cleanQuery ||
         o.id === cleanQuery ||
-        o.shippingEmail?.toLowerCase() === query,
+        o.shippingEmail?.toLowerCase() === query
     );
 
     if (found) {
@@ -888,15 +856,55 @@ export default function App() {
         (o) =>
           o.orderNumber?.toString() === cleanQuery ||
           o.id === cleanQuery ||
-          o.shippingEmail?.toLowerCase() === query,
+          o.shippingEmail?.toLowerCase() === query
       );
       if (localFound) {
         setTrackedOrder(localFound);
       } else {
-        setTrackError(
-          "لم نتمكن من العثور على هذا الطلب. يرجى التحقق من الرقم والمحاولة مرة أخرى. / Order not found. Please double-check and try again.",
-        );
+        setTrackError("لم نتمكن من العثور على هذا الطلب. يرجى التحقق من الرقم والمحاولة مرة أخرى. / Order not found. Please double-check and try again.");
       }
+    }
+  };
+
+  const handleCancelOrder = async (orderId: string) => {
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "تم إلغاء الطلب" }),
+      });
+
+      if (res.ok) {
+        triggerAppNotification("تم إلغاء الطلب بنجاح");
+      }
+
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, status: "تم إلغاء الطلب" } : o))
+      );
+
+      if (trackedOrder && (trackedOrder.id === orderId || trackedOrder.orderNumber?.toString() === orderId)) {
+        setTrackedOrder((prev) => (prev ? { ...prev, status: "تم إلغاء الطلب" } : null));
+      }
+
+      try {
+        const savedOrders = localStorage.getItem("vero_orders");
+        if (savedOrders) {
+          const parsed: Order[] = JSON.parse(savedOrders);
+          const updated = parsed.map((o) =>
+            o.id === orderId || o.orderNumber?.toString() === orderId
+              ? { ...o, status: "تم إلغاء الطلب" }
+              : o
+          );
+          localStorage.setItem("vero_orders", JSON.stringify(updated));
+        }
+      } catch (e) {
+        // ignore
+      }
+
+      setOrdersVersion((v) => v + 1);
+      fetchOrders();
+    } catch (err) {
+      console.error("Error cancelling order:", err);
     }
   };
 
@@ -917,7 +925,7 @@ export default function App() {
     });
     // Fetch fresh orders from backend server to display immediately
     fetchOrders();
-    setOrdersVersion((v) => v + 1);
+    setOrdersVersion(v => v + 1);
   };
 
   // Favorite operations
@@ -928,36 +936,29 @@ export default function App() {
     setFavorites((prev) =>
       prev.includes(product.id)
         ? prev.filter((id) => id !== product.id)
-        : [...prev, product.id],
+        : [...prev, product.id]
     );
   };
 
   const isFavorited = (productId: string) => favorites.includes(productId);
 
   // Cart calculations
-  const cartSubtotal = cart.reduce(
-    (sum, item) => sum + item.product.price * item.quantity,
-    0,
-  );
+  const cartSubtotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
   const deliveryFee = cart.length > 0 ? 50 : 0; // Flat-rate delivery fee
-
+  
   // Promo code discounts
-  const matchedPromo = promos.find(
-    (p) => p.code.toUpperCase() === activePromo.toUpperCase(),
-  );
-  const matchedReward = rewards.find(
-    (r) => r.code.toUpperCase() === activePromo.toUpperCase(),
-  );
-
+  const matchedPromo = promos.find((p) => p.code.toUpperCase() === activePromo.toUpperCase());
+  const matchedReward = rewards.find((r) => r.code.toUpperCase() === activePromo.toUpperCase());
+  
   const discountMultiplier = matchedPromo
-    ? matchedPromo.discountPercent / 100
+    ? (matchedPromo.discountPercent / 100)
     : matchedReward
-      ? matchedReward.discountPercent / 100
-      : activePromo === "WELCOME10"
-        ? 0.1
-        : activePromo === "VERO"
-          ? 0.15
-          : 0;
+    ? (matchedReward.discountPercent / 100)
+    : activePromo === "WELCOME10"
+    ? 0.1
+    : activePromo === "VERO"
+    ? 0.15
+    : 0;
   const discountAmount = cartSubtotal * discountMultiplier;
   const cartTotal = cartSubtotal - discountAmount + deliveryFee;
 
@@ -971,9 +972,7 @@ export default function App() {
     const generalPromo = promos.find((p) => p.code.toUpperCase() === code);
     if (generalPromo) {
       setActivePromo(code);
-      setPromoSuccess(
-        `Promo ${code} applied successfully! Enjoy ${generalPromo.discountPercent}% discount. / تم تطبيق كود الخصم بنجاح! خصم بقيمة ${generalPromo.discountPercent}٪`,
-      );
+      setPromoSuccess(`Promo ${code} applied successfully! Enjoy ${generalPromo.discountPercent}% discount. / تم تطبيق كود الخصم بنجاح! خصم بقيمة ${generalPromo.discountPercent}٪`);
       setPromoInput("");
       return;
     }
@@ -997,15 +996,11 @@ export default function App() {
         });
 
         if (user && !hasRedeemed) {
-          setPromoError(
-            "This coupon code is valid, but you have not redeemed it yet from your loyalty rewards profile. / كود صحيح ولكن لم تقم باستبداله بعد.",
-          );
+          setPromoError("This coupon code is valid, but you have not redeemed it yet from your loyalty rewards profile. / كود صحيح ولكن لم تقم باستبداله بعد.");
         } else {
           setActivePromo(code);
           setActivePromo(code);
-          setPromoSuccess(
-            `Promo ${code} applied successfully! Enjoy ${reward.discountPercent}% VIP discount.`,
-          );
+          setPromoSuccess(`Promo ${code} applied successfully! Enjoy ${reward.discountPercent}% VIP discount.`);
         }
       } else if (code === "") {
         setPromoError("Please enter a valid code.");
@@ -1035,9 +1030,7 @@ export default function App() {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.categoryName.toLowerCase().includes(q),
+        (p) => p.name.toLowerCase().includes(q) || p.categoryName.toLowerCase().includes(q)
       );
     }
 
@@ -1088,6 +1081,12 @@ export default function App() {
         user={user}
         onOpenAuth={() => setAuthModalOpen(true)}
         onLogout={handleLogout}
+        onTrackOrder={(orderNum) => {
+          setActiveTab("track");
+          if (orderNum) {
+            handleTrackOrder(orderNum);
+          }
+        }}
         onUpdateUser={handleUpdateUser}
       />
 
@@ -1101,7 +1100,8 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.8 }}
-              className="space-y-24">
+              className="space-y-24"
+            >
               {/* Hero Section */}
               <section className="relative h-[78vh] min-h-[550px] w-full overflow-hidden flex items-center justify-center">
                 <div className="absolute inset-0 z-0 scale-105 select-none">
@@ -1132,14 +1132,16 @@ export default function App() {
                         setSelectedCategory("all");
                         setActiveTab("shop");
                       }}
-                      className="bg-brand-gold text-white px-10 py-4 text-xs font-semibold tracking-[0.2em] uppercase hover:bg-brand-umber transition-all shadow-md w-full sm:w-auto">
+                      className="bg-brand-gold text-white px-10 py-4 text-xs font-semibold tracking-[0.2em] uppercase hover:bg-brand-umber transition-all shadow-md w-full sm:w-auto"
+                    >
                       EXPLORE COLLECTION
                     </motion.button>
                     <motion.button
                       whileHover={{ scale: 1.03 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={() => setActiveTab("our-story")}
-                      className="border border-brand-surface-low text-brand-surface-low px-10 py-4 text-xs font-semibold tracking-[0.2em] uppercase hover:bg-brand-surface-low hover:text-brand-umber transition-all w-full sm:w-auto">
+                      className="border border-brand-surface-low text-brand-surface-low px-10 py-4 text-xs font-semibold tracking-[0.2em] uppercase hover:bg-brand-surface-low hover:text-brand-umber transition-all w-full sm:w-auto"
+                    >
                       OUR STORY
                     </motion.button>
                   </div>
@@ -1165,15 +1167,15 @@ export default function App() {
                       setSelectedCategory("all");
                       setActiveTab("shop");
                     }}
-                    className="group flex items-center gap-2 font-sans text-xs font-medium text-brand-gold tracking-[0.15em] uppercase hover:opacity-75 transition-opacity">
+                    className="group flex items-center gap-2 font-sans text-xs font-medium text-brand-gold tracking-[0.15em] uppercase hover:opacity-75 transition-opacity"
+                  >
                     View All{" "}
                     <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                   </button>
                 </div>
 
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
-                  {products
-                    .filter((p) => p.isNew)
+                  {products.filter((p) => p.isNew)
                     .slice(0, 4)
                     .map((product) => (
                       <ProductCard
@@ -1186,6 +1188,16 @@ export default function App() {
                         }}
                         isFavorited={isFavorited(product.id)}
                         toggleFavorite={toggleFavorite}
+                        avgRating={
+                          productRatingMap[product.id]
+                            ? productRatingMap[product.id].sum / productRatingMap[product.id].count
+                            : 5
+                        }
+                        reviewCount={
+                          productRatingMap[product.id]
+                            ? productRatingMap[product.id].count
+                            : 0
+                        }
                       />
                     ))}
                 </div>
@@ -1212,7 +1224,8 @@ export default function App() {
                         setActiveTab("shop");
                         window.scrollTo({ top: 300, behavior: "smooth" });
                       }}
-                      className="md:col-span-8 group relative overflow-hidden h-[300px] md:h-full cursor-pointer shadow-sm border border-brand-outline-variant/10">
+                      className="md:col-span-8 group relative overflow-hidden h-[300px] md:h-full cursor-pointer shadow-sm border border-brand-outline-variant/10"
+                    >
                       <img
                         src="https://lh3.googleusercontent.com/aida-public/AB6AXuB7ddR-XGRFF7ZwjqRe3Lb-HvaihviUNpTFMTo10PZQ_-iWX3dHYb_j9NphUXFfq1RLIVS5ulRSzV-s712e4G7vtkJcHA0muDtY9DHEbI_zQeXANvKStKeeksritCSGP5ih6oc_mDzIpJo-JK5lgL9ZI9pc4qOe6-fZnEle31gNmW3Ra9tpqcoVs_RDpioKwvUn4j-9P5j6w_lfSUUHJjGBkUWuw94qrQAEzt1RoGMnNYlGOJnyMZ7U2W6oqjGuTXTYxge8Try-zWs"
                         alt="Rings Collection"
@@ -1237,7 +1250,8 @@ export default function App() {
                         setActiveTab("shop");
                         window.scrollTo({ top: 300, behavior: "smooth" });
                       }}
-                      className="md:col-span-4 group relative overflow-hidden h-[300px] md:h-full cursor-pointer shadow-sm border border-brand-outline-variant/10">
+                      className="md:col-span-4 group relative overflow-hidden h-[300px] md:h-full cursor-pointer shadow-sm border border-brand-outline-variant/10"
+                    >
                       <img
                         src="https://lh3.googleusercontent.com/aida-public/AB6AXuAHURVDMw0Ut_yNnemHeLgqN9kEmRJy9KfyIJhWGm36fQh-CMtrO0pGYuaCr4MR-OaDy0sUnfzCwvRWYY9815RVkpasZq00PZ0fRbmOmCVpkPwSWKRtiicrCUREgDhVRGMuHYa792wqM27VJFjYjxLBhHEpkVf0Ipvb3HquyCydhbrE5uPWIC5KS6E4w4d31wBTOnNQIu3ooZafSZ0qWewaHaQeiPuHaoRpnPOY5j01Hhjk48HWuTgKuMfPyIs5QbInR7O3tUJq5c8"
                         alt="Luxury Timepieces"
@@ -1262,7 +1276,8 @@ export default function App() {
                         setActiveTab("shop");
                         window.scrollTo({ top: 300, behavior: "smooth" });
                       }}
-                      className="md:col-span-4 group relative overflow-hidden h-[300px] md:h-[350px] cursor-pointer shadow-sm border border-brand-outline-variant/10">
+                      className="md:col-span-4 group relative overflow-hidden h-[300px] md:h-[350px] cursor-pointer shadow-sm border border-brand-outline-variant/10"
+                    >
                       <img
                         src="https://lh3.googleusercontent.com/aida-public/AB6AXuAoQPdv1Jz-RjB7b1hjgtGz63JLAFwfHrviFOr5ny4f6MFDkZxOQHHTjelEbjGpcI5RvtXjohZvo8yjwqrKVDJG_6wpfjn26-AFirT4svWQONukVwV2KLBxWem4yr7Ey28wxvNJXeFlKCpGqoT_PXUZ3yHVpvS7-0ASt7bKmz8N3dAwt6XznGpD02rnAxlpnzC8jT9H_DIEHfTWzCnCRQA2GHwO-xljT6UvWXNkBEMwG2F3fuvp53Fw3u3cXqeNnjEM3uiSoHn5P7k"
                         alt="High Jewelry Necklaces"
@@ -1287,7 +1302,8 @@ export default function App() {
                         setActiveTab("shop");
                         window.scrollTo({ top: 300, behavior: "smooth" });
                       }}
-                      className="md:col-span-8 group relative overflow-hidden h-[300px] md:h-[350px] cursor-pointer shadow-sm border border-brand-outline-variant/10">
+                      className="md:col-span-8 group relative overflow-hidden h-[300px] md:h-[350px] cursor-pointer shadow-sm border border-brand-outline-variant/10"
+                    >
                       <img
                         src="https://lh3.googleusercontent.com/aida-public/AB6AXuB_4xPadl5w6Pl2wmap9TNWjuW3eRqmSaee8UcVUYb5Ob0tjxyVXXgSUz8bd800TgShznRuwLsCSE8fL8g54lW8D6Y2Wqn77Y3VnnDy11ZQQyS78UrFyUgxqRXe83BtXdaR7o05YC071Tjfyge5uII8vI9eb_n0zITggflZzz8_ocIceRDAsQovQqPZTN6SXT9FkEnH750_FvFUxz-___-L_RW-wCIyddPds8SWGNUvJZlb-z3tgbVqUqsnmttQOxLDZXqdfrdHuOs"
                         alt="Fine Jewelry"
@@ -1314,8 +1330,7 @@ export default function App() {
                   The Vero Journal
                 </span>
                 <h2 className="font-serif italic text-3xl md:text-4xl text-brand-umber leading-relaxed font-light">
-                  "Join our world of understated luxury and receive curated
-                  updates on new releases."
+                  "Join our world of understated luxury and receive curated updates on new releases."
                 </h2>
                 <div className="w-10 h-px bg-brand-gold/40 mx-auto mt-10"></div>
               </section>
@@ -1328,7 +1343,8 @@ export default function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="max-w-7xl mx-auto px-6 md:px-12 py-8">
+              className="max-w-7xl mx-auto px-6 md:px-12 py-8"
+            >
               {/* Header Info */}
               <section className="mb-12 md:mb-16">
                 <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 border-b border-brand-outline-variant/20 pb-8">
@@ -1340,9 +1356,7 @@ export default function App() {
                       Shop All
                     </h1>
                     <p className="font-sans text-xs font-light text-brand-outline max-w-lg leading-relaxed">
-                      Meticulously crafted accessories designed for those who
-                      appreciate the poetry of detail. Discover quiet luxury
-                      below.
+                      Meticulously crafted accessories designed for those who appreciate the poetry of detail. Discover quiet luxury below.
                     </p>
                   </div>
 
@@ -1359,7 +1373,8 @@ export default function App() {
                           setSelectedCategory(e.target.value);
                           setCurrentPage(1);
                         }}
-                        className="bg-transparent border-b border-brand-outline-variant text-xs text-brand-umber outline-none py-1.5 focus:border-brand-gold font-medium tracking-wider">
+                        className="bg-transparent border-b border-brand-outline-variant text-xs text-brand-umber outline-none py-1.5 focus:border-brand-gold font-medium tracking-wider"
+                      >
                         {CATEGORIES.map((cat) => (
                           <option key={cat.id} value={cat.id}>
                             {cat.name}
@@ -1381,7 +1396,8 @@ export default function App() {
                           setSortBy(e.target.value);
                           setCurrentPage(1);
                         }}
-                        className="bg-transparent border-b border-brand-outline-variant text-xs text-brand-umber outline-none py-1.5 focus:border-brand-gold font-medium tracking-wider">
+                        className="bg-transparent border-b border-brand-outline-variant text-xs text-brand-umber outline-none py-1.5 focus:border-brand-gold font-medium tracking-wider"
+                      >
                         <option value="default">Default</option>
                         <option value="price-asc">Price: Low to High</option>
                         <option value="price-desc">Price: High to Low</option>
@@ -1390,9 +1406,7 @@ export default function App() {
                     </div>
 
                     {/* Clear filter button if any is active */}
-                    {(selectedCategory !== "all" ||
-                      searchQuery !== "" ||
-                      sortBy !== "default") && (
+                    {(selectedCategory !== "all" || searchQuery !== "" || sortBy !== "default") && (
                       <button
                         onClick={() => {
                           setSelectedCategory("all");
@@ -1400,7 +1414,8 @@ export default function App() {
                           setSortBy("default");
                           setCurrentPage(1);
                         }}
-                        className="text-brand-gold underline underline-offset-4 font-semibold tracking-wider text-[10px] uppercase">
+                        className="text-brand-gold underline underline-offset-4 font-semibold tracking-wider text-[10px] uppercase"
+                      >
                         Reset Filters
                       </button>
                     )}
@@ -1422,6 +1437,16 @@ export default function App() {
                       }}
                       isFavorited={isFavorited(product.id)}
                       toggleFavorite={toggleFavorite}
+                      avgRating={
+                        productRatingMap[product.id]
+                          ? productRatingMap[product.id].sum / productRatingMap[product.id].count
+                          : 5
+                      }
+                      reviewCount={
+                        productRatingMap[product.id]
+                          ? productRatingMap[product.id].count
+                          : 0
+                      }
                     />
                   ))}
                 </div>
@@ -1436,7 +1461,8 @@ export default function App() {
                       setSearchQuery("");
                       setSortBy("default");
                     }}
-                    className="bg-brand-gold text-white px-8 py-3.5 text-xs font-semibold tracking-widest uppercase hover:bg-brand-umber transition-all">
+                    className="bg-brand-gold text-white px-8 py-3.5 text-xs font-semibold tracking-widest uppercase hover:bg-brand-umber transition-all"
+                  >
                     Clear Filter
                   </button>
                 </div>
@@ -1449,7 +1475,8 @@ export default function App() {
                     whileTap={{ scale: 0.95 }}
                     disabled={currentPage === 1}
                     onClick={() => setCurrentPage((c) => Math.max(1, c - 1))}
-                    className="w-11 h-11 flex items-center justify-center rounded-full border border-brand-outline-variant/40 text-brand-gold hover:bg-brand-gold hover:text-white disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-brand-gold transition-all duration-300">
+                    className="w-11 h-11 flex items-center justify-center rounded-full border border-brand-outline-variant/40 text-brand-gold hover:bg-brand-gold hover:text-white disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-brand-gold transition-all duration-300"
+                  >
                     <ChevronLeft className="w-5 h-5" />
                   </motion.button>
 
@@ -1465,7 +1492,8 @@ export default function App() {
                             isActive
                               ? "bg-brand-gold text-white font-bold"
                               : "text-brand-outline hover:text-brand-gold hover:bg-brand-surface-low"
-                          }`}>
+                          }`}
+                        >
                           {pageNum < 10 ? `0${pageNum}` : pageNum}
                         </button>
                       );
@@ -1475,10 +1503,9 @@ export default function App() {
                   <motion.button
                     whileTap={{ scale: 0.95 }}
                     disabled={currentPage === totalPages}
-                    onClick={() =>
-                      setCurrentPage((c) => Math.min(totalPages, c + 1))
-                    }
-                    className="w-11 h-11 flex items-center justify-center rounded-full border border-brand-outline-variant/40 text-brand-gold hover:bg-brand-gold hover:text-white disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-brand-gold transition-all duration-300">
+                    onClick={() => setCurrentPage((c) => Math.min(totalPages, c + 1))}
+                    className="w-11 h-11 flex items-center justify-center rounded-full border border-brand-outline-variant/40 text-brand-gold hover:bg-brand-gold hover:text-white disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-brand-gold transition-all duration-300"
+                  >
                     <ChevronRight className="w-5 h-5" />
                   </motion.button>
                 </div>
@@ -1492,14 +1519,13 @@ export default function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="max-w-7xl mx-auto px-6 md:px-12 py-8">
+              className="max-w-7xl mx-auto px-6 md:px-12 py-8"
+            >
               {/* Breadcrumbs */}
               <nav className="mb-10 text-[10px] font-sans tracking-[0.15em] uppercase text-brand-outline/60">
                 <ul className="flex flex-wrap items-center gap-2">
                   <li>
-                    <button
-                      onClick={() => setActiveTab("home")}
-                      className="hover:text-brand-gold transition-colors">
+                    <button onClick={() => setActiveTab("home")} className="hover:text-brand-gold transition-colors">
                       Home
                     </button>
                   </li>
@@ -1510,7 +1536,8 @@ export default function App() {
                         setSelectedCategory(selectedProduct.categoryId);
                         setActiveTab("shop");
                       }}
-                      className="hover:text-brand-gold transition-colors">
+                      className="hover:text-brand-gold transition-colors"
+                    >
                       {selectedProduct.categoryName}
                     </button>
                   </li>
@@ -1542,7 +1569,8 @@ export default function App() {
                           ? "bg-brand-gold text-white border-brand-gold"
                           : "bg-white/70 text-brand-gold border-transparent hover:bg-white hover:border-brand-gold/20"
                       }`}
-                      aria-label="Favorite">
+                      aria-label="Favorite"
+                    >
                       <Heart
                         className={`w-4 h-4 ${
                           isFavorited(selectedProduct.id) ? "fill-current" : ""
@@ -1552,28 +1580,28 @@ export default function App() {
                   </div>
 
                   {/* Thumbnails */}
-                  {selectedProduct.secondaryImages &&
-                    selectedProduct.secondaryImages.length > 0 && (
-                      <div className="grid grid-cols-4 gap-4">
-                        {selectedProduct.secondaryImages.map((img, i) => (
-                          <button
-                            key={i}
-                            onClick={() => setActiveDetailImage(img)}
-                            className={`aspect-square overflow-hidden border transition-all duration-300 rounded-sm relative ${
-                              activeDetailImage === img
-                                ? "border-brand-gold ring-2 ring-brand-gold/10 scale-[0.98]"
-                                : "border-brand-outline-variant/30 hover:border-brand-gold/40"
-                            }`}>
-                            <img
-                              src={img}
-                              alt={`Detail view ${i + 1}`}
-                              className="w-full h-full object-cover"
-                              referrerPolicy="no-referrer"
-                            />
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                  {selectedProduct.secondaryImages && selectedProduct.secondaryImages.length > 0 && (
+                    <div className="grid grid-cols-4 gap-4">
+                      {selectedProduct.secondaryImages.map((img, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setActiveDetailImage(img)}
+                          className={`aspect-square overflow-hidden border transition-all duration-300 rounded-sm relative ${
+                            activeDetailImage === img
+                              ? "border-brand-gold ring-2 ring-brand-gold/10 scale-[0.98]"
+                              : "border-brand-outline-variant/30 hover:border-brand-gold/40"
+                          }`}
+                        >
+                          <img
+                            src={img}
+                            alt={`Detail view ${i + 1}`}
+                            className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Information panel (Right) */}
@@ -1602,8 +1630,7 @@ export default function App() {
                             </span>
                           ) : (
                             <span className="text-xs text-brand-umber font-semibold bg-brand-gold/10 border border-brand-gold/20 px-3 py-1.5 rounded inline-block font-sans animate-pulse">
-                              الكمية المتبقية بالمخزن: {selectedProduct.stock}{" "}
-                              قطع / Only {selectedProduct.stock} left in stock
+                              الكمية المتبقية بالمخزن: {selectedProduct.stock} قطع / Only {selectedProduct.stock} left in stock
                             </span>
                           )}
                         </div>
@@ -1623,82 +1650,69 @@ export default function App() {
                     </div>
 
                     {/* Choices (Material selection) */}
-                    {selectedProduct.materialOptions &&
-                      selectedProduct.materialOptions.length > 0 && (
-                        <div className="space-y-3">
-                          <span className="text-[10px] font-semibold text-brand-umber uppercase tracking-[0.15em] block">
-                            Material
-                          </span>
-                          <div className="flex gap-4">
-                            {selectedProduct.materialOptions.map((hex, i) => {
-                              // Map materials
-                              const isSelected =
-                                selectedProduct.materialOptions?.[i] === hex;
-                              return (
-                                <button
-                                  key={i}
-                                  className="w-10 h-10 rounded-full border-2 transition-all relative flex items-center justify-center shadow-sm"
-                                  style={{
-                                    backgroundColor: hex,
-                                    borderColor: isSelected
-                                      ? "var(--color-brand-gold)"
-                                      : "transparent",
-                                    boxShadow: isSelected
-                                      ? "0 0 0 4px rgba(106, 92, 71, 0.15)"
-                                      : "none",
-                                  }}
-                                  title={hex}
-                                />
-                              );
-                            })}
-                          </div>
+                    {selectedProduct.materialOptions && selectedProduct.materialOptions.length > 0 && (
+                      <div className="space-y-3">
+                        <span className="text-[10px] font-semibold text-brand-umber uppercase tracking-[0.15em] block">
+                          Material
+                        </span>
+                        <div className="flex gap-4">
+                          {selectedProduct.materialOptions.map((hex, i) => {
+                            // Map materials
+                            const isSelected = selectedProduct.materialOptions?.[i] === hex;
+                            return (
+                              <button
+                                key={i}
+                                className="w-10 h-10 rounded-full border-2 transition-all relative flex items-center justify-center shadow-sm"
+                                style={{
+                                  backgroundColor: hex,
+                                  borderColor: isSelected ? "var(--color-brand-gold)" : "transparent",
+                                  boxShadow: isSelected ? "0 0 0 4px rgba(106, 92, 71, 0.15)" : "none",
+                                }}
+                                title={hex}
+                              />
+                            );
+                          })}
                         </div>
-                      )}
+                      </div>
+                    )}
 
                     {/* Sizes Selection */}
-                    {selectedProduct.sizeOptions &&
-                      selectedProduct.sizeOptions.length > 0 && (
-                        <div className="space-y-3">
-                          <div className="flex justify-between items-center">
-                            <span className="text-[10px] font-semibold text-brand-umber uppercase tracking-[0.15em] block">
-                              Select Size
-                            </span>
-                            <button
-                              onClick={() =>
-                                alert(
-                                  "Size Guide:\nRing measurements based on standard US sizing (06, 07, 08, 09).\nBangle measurements (S, M, L) based on wrist circumferences: S (6.0 in), M (6.5 in), L (7.0 in).",
-                                )
-                              }
-                              className="text-[10px] text-brand-gold underline underline-offset-4 font-semibold tracking-wider uppercase">
-                              Size Guide
-                            </button>
-                          </div>
-                          <div className="flex flex-wrap gap-2.5">
-                            {selectedProduct.sizeOptions.map((size) => (
-                              <button
-                                key={size}
-                                className="px-5 py-3.5 border border-brand-gold bg-brand-gold text-white text-xs tracking-wider uppercase font-medium rounded-sm">
-                                {size}
-                              </button>
-                            ))}
-                          </div>
+                    {selectedProduct.sizeOptions && selectedProduct.sizeOptions.length > 0 && (
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-semibold text-brand-umber uppercase tracking-[0.15em] block">
+                            Select Size
+                          </span>
+                          <button 
+                            onClick={() => alert("Size Guide:\nRing measurements based on standard US sizing (06, 07, 08, 09).\nBangle measurements (S, M, L) based on wrist circumferences: S (6.0 in), M (6.5 in), L (7.0 in).")}
+                            className="text-[10px] text-brand-gold underline underline-offset-4 font-semibold tracking-wider uppercase"
+                          >
+                            Size Guide
+                          </button>
                         </div>
-                      )}
+                        <div className="flex flex-wrap gap-2.5">
+                          {selectedProduct.sizeOptions.map((size) => (
+                            <button
+                              key={size}
+                              className="px-5 py-3.5 border border-brand-gold bg-brand-gold text-white text-xs tracking-wider uppercase font-medium rounded-sm"
+                            >
+                              {size}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Actions buttons */}
                   <div className="space-y-6 pt-10">
                     <motion.button
                       whileHover={selectedProduct.stock === 0 ? {} : { y: -2 }}
-                      whileTap={
-                        selectedProduct.stock === 0 ? {} : { scale: 0.98 }
-                      }
+                      whileTap={selectedProduct.stock === 0 ? {} : { scale: 0.98 }}
                       disabled={selectedProduct.stock === 0}
                       onClick={() => {
-                        const material =
-                          selectedProduct.materialOptions?.[0] || "#E5D5BC";
-                        const size =
-                          selectedProduct.sizeOptions?.[0] || "One Size";
+                        const material = selectedProduct.materialOptions?.[0] || "#E5D5BC";
+                        const size = selectedProduct.sizeOptions?.[0] || "One Size";
                         handleAddToBag(selectedProduct, material, size);
                         setActiveTab("bag");
                       }}
@@ -1706,7 +1720,8 @@ export default function App() {
                         selectedProduct.stock === 0
                           ? "bg-rose-700/85 cursor-not-allowed"
                           : "bg-brand-gold hover:bg-brand-umber"
-                      }`}>
+                      }`}
+                    >
                       {selectedProduct.stock === 0 ? (
                         <>OUT OF STOCK</>
                       ) : (
@@ -1727,12 +1742,10 @@ export default function App() {
                       <div className="border-b border-brand-outline-variant/20 py-4">
                         <button
                           onClick={() =>
-                            setAccordionOpen((prev) => ({
-                              ...prev,
-                              details: !prev.details,
-                            }))
+                            setAccordionOpen((prev) => ({ ...prev, details: !prev.details }))
                           }
-                          className="w-full flex justify-between items-center text-[10px] font-semibold uppercase tracking-[0.15em] text-brand-umber outline-none">
+                          className="w-full flex justify-between items-center text-[10px] font-semibold uppercase tracking-[0.15em] text-brand-umber outline-none"
+                        >
                           Product Details
                           <ChevronRight
                             className={`w-4 h-4 text-brand-gold transition-transform duration-300 ${
@@ -1746,7 +1759,8 @@ export default function App() {
                               initial={{ opacity: 0, height: 0 }}
                               animate={{ opacity: 1, height: "auto" }}
                               exit={{ opacity: 0, height: 0 }}
-                              className="overflow-hidden text-[11px] font-light text-brand-outline leading-relaxed pt-3 space-y-1.5">
+                              className="overflow-hidden text-[11px] font-light text-brand-outline leading-relaxed pt-3 space-y-1.5"
+                            >
                               {selectedProduct.details?.map((detail, index) => (
                                 <p key={index}>• {detail}</p>
                               ))}
@@ -1764,7 +1778,8 @@ export default function App() {
                               craftsmanship: !prev.craftsmanship,
                             }))
                           }
-                          className="w-full flex justify-between items-center text-[10px] font-semibold uppercase tracking-[0.15em] text-brand-umber outline-none">
+                          className="w-full flex justify-between items-center text-[10px] font-semibold uppercase tracking-[0.15em] text-brand-umber outline-none"
+                        >
                           The Craftsmanship
                           <ChevronRight
                             className={`w-4 h-4 text-brand-gold transition-transform duration-300 ${
@@ -1778,7 +1793,8 @@ export default function App() {
                               initial={{ opacity: 0, height: 0 }}
                               animate={{ opacity: 1, height: "auto" }}
                               exit={{ opacity: 0, height: 0 }}
-                              className="overflow-hidden text-[11px] font-light text-brand-outline leading-relaxed pt-3">
+                              className="overflow-hidden text-[11px] font-light text-brand-outline leading-relaxed pt-3"
+                            >
                               <p>
                                 {selectedProduct.craftsmanship ||
                                   "Each VERO creation is hand-forged by master jewellers utilizing ancient Roman lost-wax casting techniques combined with cutting-edge micro-precision tooling. We dedicate a minimum of 40 focused workshop hours to forge, hand-polish, and authenticate every custom article."}
@@ -1802,9 +1818,7 @@ export default function App() {
                     Restraint Over Ostentation
                   </h3>
                   <p className="font-sans text-xs font-light text-brand-outline leading-relaxed">
-                    Luxury is not loud; it is the quiet confidence in every
-                    meticulously finished edge and thoughtfully selected
-                    recycled precious material.
+                    Luxury is not loud; it is the quiet confidence in every meticulously finished edge and thoughtfully selected recycled precious material.
                   </p>
                 </div>
               </section>
@@ -1823,8 +1837,7 @@ export default function App() {
                 </div>
 
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
-                  {products
-                    .filter((p) => p.id !== selectedProduct.id)
+                  {products.filter((p) => p.id !== selectedProduct.id)
                     .slice(0, 4)
                     .map((rec) => (
                       <ProductCard
@@ -1850,7 +1863,8 @@ export default function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="max-w-7xl mx-auto px-6 md:px-12 py-8">
+              className="max-w-7xl mx-auto px-6 md:px-12 py-8"
+            >
               <section className="mb-12 border-b border-brand-outline-variant/20 pb-8">
                 <span className="text-brand-gold font-sans text-[10px] font-semibold tracking-[0.2em] uppercase block mb-3">
                   Your Custom Vault
@@ -1859,28 +1873,25 @@ export default function App() {
                   Saved Favorites
                 </h1>
                 <p className="font-sans text-xs font-light text-brand-outline max-w-lg mt-2 leading-relaxed">
-                  Your personally curated list of timeless jewelry, timepieces,
-                  and accessories. Add them to bag instantly.
+                  Your personally curated list of timeless jewelry, timepieces, and accessories. Add them to bag instantly.
                 </p>
               </section>
 
               {favorites.length > 0 ? (
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-16">
-                  {products
-                    .filter((p) => favorites.includes(p.id))
-                    .map((product) => (
-                      <ProductCard
-                        key={product.id}
-                        product={product}
-                        onProductClick={handleProductDetailNavigate}
-                        onQuickViewClick={(prod, e) => {
-                          e.stopPropagation();
-                          setQuickViewProduct(prod);
-                        }}
-                        isFavorited={true}
-                        toggleFavorite={toggleFavorite}
-                      />
-                    ))}
+                  {products.filter((p) => favorites.includes(p.id)).map((product) => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      onProductClick={handleProductDetailNavigate}
+                      onQuickViewClick={(prod, e) => {
+                        e.stopPropagation();
+                        setQuickViewProduct(prod);
+                      }}
+                      isFavorited={true}
+                      toggleFavorite={toggleFavorite}
+                    />
+                  ))}
                 </div>
               ) : (
                 <div className="text-center py-20 bg-brand-surface-low border border-brand-outline-variant/10">
@@ -1892,7 +1903,8 @@ export default function App() {
                       setSelectedCategory("all");
                       setActiveTab("shop");
                     }}
-                    className="bg-brand-gold text-white px-8 py-3.5 text-xs font-semibold tracking-widest uppercase hover:bg-brand-umber transition-all">
+                    className="bg-brand-gold text-white px-8 py-3.5 text-xs font-semibold tracking-widest uppercase hover:bg-brand-umber transition-all"
+                  >
                     Browse Collections
                   </button>
                 </div>
@@ -1906,7 +1918,8 @@ export default function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="max-w-7xl mx-auto px-6 md:px-12 py-8">
+              className="max-w-7xl mx-auto px-6 md:px-12 py-8"
+            >
               <section className="mb-12">
                 <h1 className="font-serif text-4xl text-brand-umber tracking-wide uppercase font-normal mb-2">
                   Shopping Bag
@@ -1925,15 +1938,14 @@ export default function App() {
                     {cart.map((item) => (
                       <div
                         key={item.id}
-                        className="flex flex-col sm:flex-row gap-6 border-b border-brand-outline-variant/20 pb-8 group">
+                        className="flex flex-col sm:flex-row gap-6 border-b border-brand-outline-variant/20 pb-8 group"
+                      >
                         {/* Image */}
                         <div className="w-full sm:w-32 aspect-square bg-brand-surface-low overflow-hidden rounded-sm cursor-pointer shadow-sm">
                           <img
                             src={item.product.image}
                             alt={item.product.name}
-                            onClick={() =>
-                              handleProductDetailNavigate(item.product)
-                            }
+                            onClick={() => handleProductDetailNavigate(item.product)}
                             className="w-full h-full object-cover transition-transform duration-750 group-hover:scale-105"
                             referrerPolicy="no-referrer"
                           />
@@ -1944,19 +1956,16 @@ export default function App() {
                           <div className="flex justify-between items-start gap-4">
                             <div>
                               <h3
-                                onClick={() =>
-                                  handleProductDetailNavigate(item.product)
-                                }
-                                className="font-serif text-lg text-brand-umber hover:text-brand-gold cursor-pointer transition-colors mb-1 font-normal">
+                                onClick={() => handleProductDetailNavigate(item.product)}
+                                className="font-serif text-lg text-brand-umber hover:text-brand-gold cursor-pointer transition-colors mb-1 font-normal"
+                              >
                                 {item.product.name}
                               </h3>
                               <p className="font-sans text-[10px] text-brand-outline uppercase tracking-wider">
                                 {item.product.categoryName} •{" "}
                                 <span
                                   className="inline-block w-2.5 h-2.5 rounded-full border align-middle mr-1"
-                                  style={{
-                                    backgroundColor: item.selectedMaterial,
-                                  }}
+                                  style={{ backgroundColor: item.selectedMaterial }}
                                 />
                                 Size {item.selectedSize}
                               </p>
@@ -1965,7 +1974,8 @@ export default function App() {
                             <button
                               onClick={() => handleRemoveFromCart(item.id)}
                               className="text-brand-outline/60 hover:text-red-500 transition-colors p-1"
-                              aria-label="Remove item">
+                              aria-label="Remove item"
+                            >
                               <Trash2 className="w-4.5 h-4.5 stroke-[1.5]" />
                             </button>
                           </div>
@@ -1974,10 +1984,9 @@ export default function App() {
                           <div className="flex justify-between items-end mt-6">
                             <div className="flex items-center border border-brand-outline-variant/40 rounded-sm bg-white">
                               <button
-                                onClick={() =>
-                                  handleUpdateQuantity(item.id, -1)
-                                }
-                                className="px-3 py-1.5 text-brand-outline hover:text-brand-gold hover:bg-brand-surface-low transition-colors active:scale-90">
+                                onClick={() => handleUpdateQuantity(item.id, -1)}
+                                className="px-3 py-1.5 text-brand-outline hover:text-brand-gold hover:bg-brand-surface-low transition-colors active:scale-90"
+                              >
                                 <Minus className="w-3 h-3" />
                               </button>
                               <span className="px-4 py-1 text-xs font-semibold text-brand-umber border-x border-brand-outline-variant/20">
@@ -1985,16 +1994,14 @@ export default function App() {
                               </span>
                               <button
                                 onClick={() => handleUpdateQuantity(item.id, 1)}
-                                className="px-3 py-1.5 text-brand-outline hover:text-brand-gold hover:bg-brand-surface-low transition-colors active:scale-90">
+                                className="px-3 py-1.5 text-brand-outline hover:text-brand-gold hover:bg-brand-surface-low transition-colors active:scale-90"
+                              >
                                 <Plus className="w-3 h-3" />
                               </button>
                             </div>
 
                             <span className="font-sans text-sm font-semibold text-brand-gold">
-                              EGP{" "}
-                              {(
-                                item.product.price * item.quantity
-                              ).toLocaleString()}
+                              EGP {(item.product.price * item.quantity).toLocaleString()}
                             </span>
                           </div>
                         </div>
@@ -2007,7 +2014,8 @@ export default function App() {
                           setSelectedCategory("all");
                           setActiveTab("shop");
                         }}
-                        className="text-brand-gold font-sans text-xs font-semibold border-b border-brand-gold/30 pb-1 hover:border-brand-gold transition-all duration-300 uppercase tracking-widest">
+                        className="text-brand-gold font-sans text-xs font-semibold border-b border-brand-gold/30 pb-1 hover:border-brand-gold transition-all duration-300 uppercase tracking-widest"
+                      >
                         CONTINUE SHOPPING
                       </button>
                     </div>
@@ -2056,15 +2064,12 @@ export default function App() {
                           />
                           <button
                             type="submit"
-                            className="text-brand-gold font-sans text-xs font-semibold hover:opacity-75 transition-opacity">
+                            className="text-brand-gold font-sans text-xs font-semibold hover:opacity-75 transition-opacity"
+                          >
                             APPLY
                           </button>
                         </div>
-                        {promoError && (
-                          <p className="text-[10px] text-red-500 font-light">
-                            {promoError}
-                          </p>
-                        )}
+                        {promoError && <p className="text-[10px] text-red-500 font-light">{promoError}</p>}
                         {promoSuccess && (
                           <p className="text-[10px] text-brand-gold font-semibold flex items-center gap-1">
                             <Check className="w-3.5 h-3.5" />
@@ -2087,7 +2092,8 @@ export default function App() {
                         whileHover={{ y: -1 }}
                         whileTap={{ scale: 0.98 }}
                         onClick={() => setCheckoutOpen(true)}
-                        className="w-full bg-brand-gold hover:bg-brand-umber text-white font-sans text-xs font-semibold py-5 tracking-[0.15em] uppercase transition-all shadow-md rounded-sm flex items-center justify-center gap-2">
+                        className="w-full bg-brand-gold hover:bg-brand-umber text-white font-sans text-xs font-semibold py-5 tracking-[0.15em] uppercase transition-all shadow-md rounded-sm flex items-center justify-center gap-2"
+                      >
                         <Lock className="w-4 h-4 stroke-[1.5]" />
                         Proceed to Checkout
                       </motion.button>
@@ -2111,1023 +2117,350 @@ export default function App() {
                       setSelectedCategory("all");
                       setActiveTab("shop");
                     }}
-                    className="bg-brand-gold text-white px-8 py-3.5 text-xs font-semibold tracking-widest uppercase hover:bg-brand-umber transition-all">
+                    className="bg-brand-gold text-white px-8 py-3.5 text-xs font-semibold tracking-widest uppercase hover:bg-brand-umber transition-all"
+                  >
                     Start Shopping
                   </button>
                 </div>
               )}
 
-              {/* Order Tracking Section (Disabled for Client) */}
-              {false && (
-                <div className="border-t border-brand-outline-variant/25 pt-12 text-left">
-                  <div className="max-w-3xl mx-auto space-y-8">
-                    <div className="text-center space-y-2">
-                      <div className="inline-flex items-center justify-center p-3 bg-brand-linen rounded-full border border-brand-gold/15 text-brand-gold mb-2">
-                        <Truck className="w-6 h-6" />
-                      </div>
-                      <h2 className="font-serif text-2xl text-brand-umber font-semibold tracking-wide">
-                        Live Order Tracking | تتبع حالة طلبك
-                      </h2>
-                      <p className="font-sans text-xs text-brand-outline font-light max-w-lg mx-auto leading-relaxed">
-                        Enter your order number or email address below to track
-                        the live status and shipping timeline of your
-                        hand-crafted Florence accessories.
-                      </p>
-                      <p className="text-[11px] text-brand-gold font-serif italic">
-                        تتبع مسار شحنتك الفاخرة مباشرة من معاملنا في فلورنسا حتى
-                        باب منزلك.
-                      </p>
+              {/* Order Tracking Section inside Shopping Bag (Cart) */}
+              <div className="border-t border-brand-outline-variant/25 pt-12 space-y-8 text-right" dir="rtl">
+                <div className="text-center space-y-2 max-w-xl mx-auto">
+                  <div className="inline-flex items-center justify-center p-3 bg-[#f7f4ef] rounded-full border border-[#c5a880]/20 text-[#c5a880] mb-2">
+                    <Truck className="w-6 h-6" />
+                  </div>
+                  <h2 className="font-serif text-2xl text-[#1f1915] font-bold tracking-wide">
+                    تتبع طلباتك | Live Order Tracking
+                  </h2>
+                  <p className="text-xs text-[#8c827a] font-normal leading-relaxed">
+                    يمكنك متابعة حالة طلبك ومراحل تجهيز الشحنة مباشرة من هنا.
+                  </p>
+                </div>
+
+                {/* If an order is explicitly selected, render its full tracking details */}
+                {trackedOrder ? (
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center bg-[#faf7f2] border border-[#eae3d9] p-3.5 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTrackedOrder(null);
+                          setTrackInput("");
+                        }}
+                        className="inline-flex items-center gap-2 text-xs font-bold text-[#c5a880] hover:text-[#1f1915] transition-colors cursor-pointer bg-white px-4 py-2 rounded-lg border border-[#eae3d9] shadow-2xs"
+                      >
+                        <ArrowLeft className="w-4 h-4 rotate-180" />
+                        <span>بحث آخر / Search Another Order</span>
+                      </button>
+                      <span className="text-xs font-mono font-bold text-[#1f1915]">
+                        جاري عرض تفاصيل الطلب #{trackedOrder.orderNumber || trackedOrder.id}
+                      </span>
                     </div>
 
-                    {/* Form input */}
-                    <form
-                      onSubmit={(e) => handleTrackOrder(e)}
-                      className="flex flex-col sm:flex-row gap-3 max-w-xl mx-auto">
+                    <OrderTrackingView
+                      order={trackedOrder}
+                      onBack={() => {
+                        setTrackedOrder(null);
+                        setTrackInput("");
+                      }}
+                      onContactSupport={() => {
+                        setSupportSubmitted(false);
+                        setSupportMessage("");
+                        setShowSupportModal(true);
+                      }}
+                      onCancelOrder={handleCancelOrder}
+                    />
+                  </div>
+                ) : (
+                  /* Search Bar and Order Search Form */
+                  <div className="space-y-6 max-w-2xl mx-auto">
+                    <form onSubmit={(e) => handleTrackOrder(e)} className="flex flex-col sm:flex-row gap-2">
                       <div className="relative flex-grow">
-                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-outline/50" />
+                        <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8c827a]" />
                         <input
                           type="text"
-                          placeholder="Order number (e.g. #1024) or Email..."
+                          placeholder="أدخل رقم الطلب (مثال: 1024) أو البريد الإلكتروني..."
                           value={trackInput}
                           onChange={(e) => setTrackInput(e.target.value)}
-                          className="w-full bg-white border border-brand-outline-variant/40 rounded-sm text-xs pl-10 pr-4 py-3.5 text-brand-umber placeholder-brand-outline/60 outline-none focus:border-brand-gold focus:ring-1 focus:ring-brand-gold/20"
+                          className="w-full bg-white border border-[#eae3d9] rounded-xl text-xs pr-10 pl-4 py-3.5 text-[#1f1915] placeholder-[#8c827a]/60 outline-none focus:border-[#c5a880] focus:ring-1 focus:ring-[#c5a880]/30 font-mono text-right shadow-2xs"
                         />
                       </div>
                       <button
                         type="submit"
-                        className="bg-brand-gold hover:bg-brand-umber text-white text-xs font-semibold tracking-wider uppercase px-6 py-3.5 rounded-sm transition-all shadow-sm shrink-0">
-                        Track Shipment | تتبع
+                        className="bg-[#c5a880] hover:bg-[#a68253] text-white text-xs font-bold px-7 py-3.5 rounded-xl transition-all shadow-xs shrink-0 cursor-pointer"
+                      >
+                        بحث عن طلب 🔍
                       </button>
                     </form>
 
                     {trackError && (
-                      <p className="text-center text-xs text-rose-600 font-medium bg-rose-50 border border-rose-100 p-3 rounded-sm max-w-xl mx-auto">
+                      <p className="text-center text-xs text-rose-600 font-medium bg-rose-50 border border-rose-100 p-3 rounded-xl">
                         {trackError}
                       </p>
                     )}
-
-                    {/* Tracking Result Display (AnimatePresence / motion) */}
-                    <AnimatePresence mode="wait">
-                      {trackedOrder &&
-                        (() => {
-                          const getStatusIndex = (status: string) => {
-                            const s = (status || "").toLowerCase();
-                            if (
-                              s.includes("delivered") ||
-                              s.includes("توصيل") ||
-                              s.includes("complete")
-                            )
-                              return 3;
-                            if (
-                              s.includes("transit") ||
-                              s.includes("شحن") ||
-                              s.includes("dhl") ||
-                              s.includes("طريق")
-                            )
-                              return 2;
-                            if (
-                              s.includes("processing") ||
-                              s.includes("تحضير") ||
-                              s.includes("ورشة") ||
-                              s.includes("صنع")
-                            )
-                              return 1;
-                            return 0; // Placed / Pending
-                          };
-                          const statusIndex = getStatusIndex(
-                            trackedOrder.status,
-                          );
-                          const progressPercentage = (statusIndex / 3) * 100;
-
-                          const formattedOrderNumber = trackedOrder.orderNumber
-                            .toUpperCase()
-                            .startsWith("VERO-")
-                            ? trackedOrder.orderNumber.toUpperCase()
-                            : "VERO-" + trackedOrder.orderNumber;
-
-                          const getDeliveryEstimate = (status: string) => {
-                            const s = (status || "").toLowerCase();
-                            if (
-                              s.includes("delivered") ||
-                              s.includes("توصيل") ||
-                              s.includes("complete")
-                            ) {
-                              return "وصل بالفعل وتم التسليم بنجاح ✨";
-                            }
-                            if (
-                              s.includes("transit") ||
-                              s.includes("شحن") ||
-                              s.includes("dhl") ||
-                              s.includes("طريق")
-                            ) {
-                              return "خلال ٢ إلى ٣ أيام عمل (شحن دولي سريع) ✈️";
-                            }
-                            if (
-                              s.includes("processing") ||
-                              s.includes("تحضير") ||
-                              s.includes("ورشة") ||
-                              s.includes("صنع")
-                            ) {
-                              return "خلال ٤ إلى ٧ أيام عمل (صياغة يدوية في فلورنسا) 🔨";
-                            }
-                            return "خلال ٧ إلى ١٠ أيام عمل (تحت المراجعة والتأكيد) 📦";
-                          };
-                          const deliveryEstimate = getDeliveryEstimate(
-                            trackedOrder.status,
-                          );
-
-                          return (
-                            <motion.div
-                              key={trackedOrder.id}
-                              initial={{ opacity: 0, y: 15 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: 15 }}
-                              className="bg-white border border-brand-gold/25 rounded-lg p-6 md:p-8 shadow-md space-y-8">
-                              {/* Order Header Info */}
-                              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-brand-outline-variant/15 pb-4">
-                                <div>
-                                  <span className="text-[9px] font-bold text-brand-gold uppercase tracking-widest bg-brand-linen/40 px-2.5 py-1 rounded-full border border-brand-gold/10">
-                                    VIP Shipment Tracking | تتبع شحنة النخبة
-                                  </span>
-                                  <h3 className="font-serif text-lg text-brand-umber font-semibold mt-1.5">
-                                    Order #{formattedOrderNumber}
-                                  </h3>
-                                  <p className="text-[10px] text-brand-outline font-light mt-0.5">
-                                    Placed on {trackedOrder.date} | Total: EGP{" "}
-                                    {trackedOrder.total?.toLocaleString()}
-                                  </p>
-                                </div>
-
-                                <div className="text-left md:text-right">
-                                  <span className="text-[10px] text-brand-outline uppercase tracking-wider block font-medium">
-                                    Current Stage | المرحلة الحالية
-                                  </span>
-                                  <span className="inline-block mt-1 px-3 py-1 bg-brand-linen text-brand-umber border border-brand-gold/20 rounded-full text-xs font-semibold">
-                                    {trackedOrder.status}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Beautiful Interactive Information Dashboard Card (Arabic/English) */}
-                              <div
-                                className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-[#fcf9f5] border border-brand-gold/15 p-5 rounded-lg text-right"
-                                dir="rtl">
-                                <div className="space-y-1 md:border-l md:border-brand-outline-variant/10 md:pl-4">
-                                  <div className="text-[10px] text-brand-gold font-bold uppercase tracking-wider">
-                                    🆔 رقم الطلب
-                                  </div>
-                                  <div className="text-sm font-semibold text-brand-umber font-mono select-all">
-                                    #{formattedOrderNumber}
-                                  </div>
-                                </div>
-                                <div className="space-y-1 md:border-l md:border-brand-outline-variant/10 md:pl-4 md:pr-2">
-                                  <div className="text-[10px] text-brand-gold font-bold uppercase tracking-wider">
-                                    📅 تاريخ الطلب
-                                  </div>
-                                  <div className="text-sm font-medium text-brand-umber">
-                                    {trackedOrder.date}
-                                  </div>
-                                </div>
-                                <div className="space-y-1 md:pr-2">
-                                  <div className="text-[10px] text-brand-gold font-bold uppercase tracking-wider">
-                                    🚚 حالة وموعد التوصيل
-                                  </div>
-                                  <div className="text-sm font-bold text-emerald-700 animate-pulse-none">
-                                    هيوصل خلال {deliveryEstimate}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Dynamic Progress Timeline Bar & Stepper */}
-                              <div className="bg-brand-linen/5 border border-[#c5a880]/10 p-5 rounded-md">
-                                <h4 className="text-[10px] font-bold text-brand-outline uppercase tracking-wider mb-6 text-center sm:text-left">
-                                  Live Progress Path | خط السير المباشر للطلب
-                                </h4>
-
-                                {/* Timeline Stepper Container */}
-                                <div className="relative">
-                                  {/* Background Line */}
-                                  <div className="hidden md:block absolute top-[18px] left-[12%] right-[12%] h-[2.5px] bg-brand-outline-variant/20 z-0 rounded-full">
-                                    {/* Completed Highlight Line */}
-                                    <div
-                                      className="h-full bg-emerald-600 transition-all duration-1000 ease-out rounded-full"
-                                      style={{
-                                        width: `${progressPercentage}%`,
-                                      }}
-                                    />
-                                  </div>
-
-                                  {/* Steps Grid */}
-                                  <div className="relative z-10 grid grid-cols-1 md:grid-cols-4 gap-6 md:gap-4 md:items-start">
-                                    {/* Step 1: Placed */}
-                                    <div className="relative flex flex-row md:flex-col items-start md:items-center gap-4 md:gap-3 text-left md:text-center">
-                                      <div className="w-10 h-10 rounded-full border-2 border-emerald-600 bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-xs shrink-0 shadow-sm">
-                                        <Check className="w-4 h-4 stroke-[2.5]" />
-                                      </div>
-                                      <div>
-                                        <h5 className="font-serif text-xs font-bold text-brand-umber">
-                                          Order Placed
-                                        </h5>
-                                        <p className="text-[9px] text-emerald-600 font-medium mt-0.5 max-w-[150px] mx-auto">
-                                          تم تأكيد واستلام الطلب
-                                        </p>
-                                      </div>
-                                    </div>
-
-                                    {/* Step 2: Processing */}
-                                    <div className="relative flex flex-row md:flex-col items-start md:items-center gap-4 md:gap-3 text-left md:text-center">
-                                      <div
-                                        className={`w-10 h-10 rounded-full border-2 flex items-center justify-center font-bold text-xs shrink-0 shadow-sm transition-all duration-300 ${
-                                          statusIndex >= 1
-                                            ? statusIndex > 1
-                                              ? "border-emerald-600 bg-emerald-50 text-emerald-600"
-                                              : "border-brand-gold bg-brand-linen text-brand-gold animate-pulse"
-                                            : "border-brand-outline-variant/30 bg-white text-brand-outline/50"
-                                        }`}>
-                                        {statusIndex > 1 ? (
-                                          <Check className="w-4 h-4 stroke-[2.5]" />
-                                        ) : (
-                                          <Clock className="w-4 h-4" />
-                                        )}
-                                      </div>
-                                      <div>
-                                        <h5 className="font-serif text-xs font-bold text-brand-umber">
-                                          Florence Workshop
-                                        </h5>
-                                        <p
-                                          className={`text-[9px] font-medium mt-0.5 max-w-[150px] mx-auto ${
-                                            statusIndex >= 1
-                                              ? "text-emerald-600"
-                                              : "text-brand-outline/60"
-                                          }`}>
-                                          {statusIndex >= 1
-                                            ? "تم صياغة القطعة يدوياً"
-                                            : "ورشة العمل بفلورنسا"}
-                                        </p>
-                                      </div>
-                                    </div>
-
-                                    {/* Step 3: In Transit */}
-                                    <div className="relative flex flex-row md:flex-col items-start md:items-center gap-4 md:gap-3 text-left md:text-center">
-                                      <div
-                                        className={`w-10 h-10 rounded-full border-2 flex items-center justify-center font-bold text-xs shrink-0 shadow-sm transition-all duration-300 ${
-                                          statusIndex >= 2
-                                            ? statusIndex > 2
-                                              ? "border-emerald-600 bg-emerald-50 text-emerald-600"
-                                              : "border-brand-gold bg-brand-linen text-brand-gold animate-pulse"
-                                            : "border-brand-outline-variant/30 bg-white text-brand-outline/50"
-                                        }`}>
-                                        {statusIndex > 2 ? (
-                                          <Check className="w-4 h-4 stroke-[2.5]" />
-                                        ) : (
-                                          <Truck className="w-4 h-4" />
-                                        )}
-                                      </div>
-                                      <div>
-                                        <h5 className="font-serif text-xs font-bold text-brand-umber">
-                                          In Transit
-                                        </h5>
-                                        <p
-                                          className={`text-[9px] font-medium mt-0.5 max-w-[150px] mx-auto ${
-                                            statusIndex >= 2
-                                              ? "text-emerald-600"
-                                              : "text-brand-outline/60"
-                                          }`}>
-                                          {statusIndex >= 2
-                                            ? "قيد الشحن الدولي DHL"
-                                            : "بانتظار تسليم الشحن"}
-                                        </p>
-                                      </div>
-                                    </div>
-
-                                    {/* Step 4: Delivered */}
-                                    <div className="relative flex flex-row md:flex-col items-start md:items-center gap-4 md:gap-3 text-left md:text-center">
-                                      <div
-                                        className={`w-10 h-10 rounded-full border-2 flex items-center justify-center font-bold text-xs shrink-0 shadow-sm transition-all duration-300 ${
-                                          statusIndex === 3
-                                            ? "border-emerald-600 bg-emerald-50 text-emerald-600"
-                                            : "border-brand-outline-variant/30 bg-white text-brand-outline/50"
-                                        }`}>
-                                        <Check className="w-4 h-4" />
-                                      </div>
-                                      <div>
-                                        <h5 className="font-serif text-xs font-bold text-brand-umber">
-                                          Delivered
-                                        </h5>
-                                        <p
-                                          className={`text-[9px] font-medium mt-0.5 max-w-[150px] mx-auto ${
-                                            statusIndex === 3
-                                              ? "text-emerald-600 font-bold"
-                                              : "text-brand-outline/60"
-                                          }`}>
-                                          {statusIndex === 3
-                                            ? "تم التوصيل بنجاح"
-                                            : "بانتظار وصول الشحنة"}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Dynamic Stage Details Cards in Arabic for the Customer */}
-                              <div
-                                className="bg-brand-linen/10 border border-brand-gold/15 rounded-lg p-5 space-y-4 text-right"
-                                dir="rtl">
-                                <h4 className="font-serif text-sm font-bold text-brand-umber flex items-center justify-between border-b border-brand-gold/15 pb-2">
-                                  <span>📍 تفاصيل مراحل التوصيل بالتفصيل</span>
-                                  <span className="text-[10px] text-brand-outline font-sans font-light">
-                                    Order Progress Roadmap
-                                  </span>
-                                </h4>
-
-                                <div className="space-y-4">
-                                  {/* Stage 1 */}
-                                  <div
-                                    className={`flex gap-3 text-sm transition-all duration-300 ${statusIndex >= 0 ? "opacity-100" : "opacity-40"}`}>
-                                    <div className="flex flex-col items-center">
-                                      <div
-                                        className={`w-6 h-6 rounded-full flex items-center justify-center font-semibold text-xs border ${
-                                          statusIndex > 0
-                                            ? "bg-emerald-600 text-white border-emerald-600"
-                                            : "bg-brand-gold text-white border-brand-gold animate-bounce"
-                                        }`}>
-                                        ١
-                                      </div>
-                                      <div className="w-[1.5px] h-full bg-brand-outline-variant/30 min-h-[40px] mt-1" />
-                                    </div>
-                                    <div className="flex-1 pb-4">
-                                      <div className="flex justify-between items-start">
-                                        <h5
-                                          className={`font-bold font-serif ${statusIndex === 0 ? "text-brand-gold" : "text-brand-umber"}`}>
-                                          المرحلة الأولى: تم استلام الطلب
-                                          وتأكيده (Order Received)
-                                        </h5>
-                                        <span className="text-[10px] font-mono text-emerald-600 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                                          ✓ مكتمل
-                                        </span>
-                                      </div>
-                                      <p className="text-xs text-brand-outline font-light mt-1 leading-relaxed">
-                                        تم استقبال طلبك بنجاح في نظام المبيعات
-                                        الفاخرة لدينا. قام فريق فيرو بالتحقق من
-                                        جودة ومواصفات المجوهرات المطلوبة ومراجعة
-                                        بيانات التوصيل الخاصة بك لبدء عملية
-                                        التصنيع اليدوية.
-                                      </p>
-                                    </div>
-                                  </div>
-
-                                  {/* Stage 2 */}
-                                  <div
-                                    className={`flex gap-3 text-sm transition-all duration-300 ${statusIndex >= 1 ? "opacity-100" : "opacity-45"}`}>
-                                    <div className="flex flex-col items-center">
-                                      <div
-                                        className={`w-6 h-6 rounded-full flex items-center justify-center font-semibold text-xs border ${
-                                          statusIndex > 1
-                                            ? "bg-emerald-600 text-white border-emerald-600"
-                                            : statusIndex === 1
-                                              ? "bg-brand-gold text-white border-brand-gold animate-pulse"
-                                              : "bg-white text-brand-outline/40 border-brand-outline-variant/30"
-                                        }`}>
-                                        ٢
-                                      </div>
-                                      <div className="w-[1.5px] h-full bg-brand-outline-variant/30 min-h-[40px] mt-1" />
-                                    </div>
-                                    <div className="flex-1 pb-4">
-                                      <div className="flex justify-between items-start">
-                                        <h5
-                                          className={`font-bold font-serif ${statusIndex === 1 ? "text-brand-gold animate-pulse" : statusIndex > 1 ? "text-brand-umber" : "text-brand-outline"}`}>
-                                          المرحلة الثانية: الصياغة اليدوية
-                                          بفلورنسا (Florence Handcrafting)
-                                        </h5>
-                                        {statusIndex > 1 ? (
-                                          <span className="text-[10px] font-mono text-emerald-600 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                                            ✓ مكتمل
-                                          </span>
-                                        ) : statusIndex === 1 ? (
-                                          <span className="text-[10px] font-mono text-brand-gold font-semibold bg-amber-50 px-2 py-0.5 rounded border border-brand-gold/25 animate-pulse">
-                                            ● جاري العمل الآن
-                                          </span>
-                                        ) : (
-                                          <span className="text-[10px] font-mono text-brand-outline/40 font-light bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
-                                            بانتظار البدء
-                                          </span>
-                                        )}
-                                      </div>
-                                      <p className="text-xs text-brand-outline font-light mt-1 leading-relaxed">
-                                        يتم الآن صياغة القطعة وتشكيلها يدوياً
-                                        بواسطة كبار حرفيي الصياغة في معاملنا
-                                        العريقة بمدينة فلورنسا الإيطالية،
-                                        مستخدمين أجود خامات البلاتين والذهب عيار
-                                        18 قيراط ومطابقة الأحجار الكريمة مع
-                                        معايير الفخامة لـ VERO.
-                                      </p>
-                                    </div>
-                                  </div>
-
-                                  {/* Stage 3 */}
-                                  <div
-                                    className={`flex gap-3 text-sm transition-all duration-300 ${statusIndex >= 2 ? "opacity-100" : "opacity-45"}`}>
-                                    <div className="flex flex-col items-center">
-                                      <div
-                                        className={`w-6 h-6 rounded-full flex items-center justify-center font-semibold text-xs border ${
-                                          statusIndex > 2
-                                            ? "bg-emerald-600 text-white border-emerald-600"
-                                            : statusIndex === 2
-                                              ? "bg-brand-gold text-white border-brand-gold animate-pulse"
-                                              : "bg-white text-brand-outline/40 border-brand-outline-variant/30"
-                                        }`}>
-                                        ٣
-                                      </div>
-                                      <div className="w-[1.5px] h-full bg-brand-outline-variant/30 min-h-[40px] mt-1" />
-                                    </div>
-                                    <div className="flex-1 pb-4">
-                                      <div className="flex justify-between items-start">
-                                        <h5
-                                          className={`font-bold font-serif ${statusIndex === 2 ? "text-brand-gold animate-pulse" : statusIndex > 2 ? "text-brand-umber" : "text-brand-outline"}`}>
-                                          المرحلة الثالثة: الشحن الدولي والمحلي
-                                          السريع (In Transit via DHL)
-                                        </h5>
-                                        {statusIndex > 2 ? (
-                                          <span className="text-[10px] font-mono text-emerald-600 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                                            ✓ مكتمل
-                                          </span>
-                                        ) : statusIndex === 2 ? (
-                                          <span className="text-[10px] font-mono text-brand-gold font-semibold bg-amber-50 px-2 py-0.5 rounded border border-brand-gold/25 animate-pulse">
-                                            ● جاري الشحن الآن
-                                          </span>
-                                        ) : (
-                                          <span className="text-[10px] font-mono text-brand-outline/40 font-light bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
-                                            بانتظار البدء
-                                          </span>
-                                        )}
-                                      </div>
-                                      <p className="text-xs text-brand-outline font-light mt-1 leading-relaxed">
-                                        بعد الانتهاء من فحص الجودة الفائق وتغليف
-                                        القطعة في علبة فيرو الفاخرة المخملية
-                                        الحامية، تم تسليم الشحنة لشركة الشحن
-                                        الدولي السريع DHL لنقلها بأمان وسرعة
-                                        فائقة من إيطاليا وصولاً لبلد الإقامة،
-                                        وجاري تحضيرها للتسليم مع مندوب الشحن
-                                        المحلي.
-                                      </p>
-                                    </div>
-                                  </div>
-
-                                  {/* Stage 4 */}
-                                  <div
-                                    className={`flex gap-3 text-sm transition-all duration-300 ${statusIndex >= 3 ? "opacity-100" : "opacity-45"}`}>
-                                    <div className="flex flex-col items-center">
-                                      <div
-                                        className={`w-6 h-6 rounded-full flex items-center justify-center font-semibold text-xs border ${
-                                          statusIndex === 3
-                                            ? "bg-emerald-600 text-white border-emerald-600 animate-pulse"
-                                            : "bg-white text-brand-outline/40 border-brand-outline-variant/30"
-                                        }`}>
-                                        ٤
-                                      </div>
-                                    </div>
-                                    <div className="flex-1">
-                                      <div className="flex justify-between items-start">
-                                        <h5
-                                          className={`font-bold font-serif ${statusIndex === 3 ? "text-emerald-600 font-bold" : "text-brand-outline"}`}>
-                                          المرحلة الرابعة: تم التوصيل والتسليم
-                                          بنجاح (Delivered)
-                                        </h5>
-                                        {statusIndex === 3 ? (
-                                          <span className="text-[10px] font-mono text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                                            ✓ تم التسليم
-                                          </span>
-                                        ) : (
-                                          <span className="text-[10px] font-mono text-brand-outline/40 font-light bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
-                                            بانتظار البدء
-                                          </span>
-                                        )}
-                                      </div>
-                                      <p className="text-xs text-brand-outline font-light mt-1 leading-relaxed">
-                                        وصلت قطعة VERO الفاخرة بأمان تام إلى
-                                        وجهتك النهائية وتم تسليمها ليدك بنجاح
-                                        لتكتمل بذلك رحلة التميز والفخامة
-                                        الإيطالية المصممة خصيصاً من أجلك. مبارك
-                                        لك القطعة الفنية الجديدة!
-                                      </p>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Elite Concierge Services & Ratings */}
-                              <div
-                                className="bg-[#fdfbf7] border border-brand-gold/20 p-5 rounded-lg space-y-4 text-center sm:text-right"
-                                dir="rtl">
-                                <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                                  <div className="text-right">
-                                    <h5 className="font-serif text-xs font-bold text-brand-umber flex items-center gap-1.5 justify-center sm:justify-start">
-                                      <span>
-                                        ✨ صالون خدمات النخبة | VERO Executive
-                                        Concierge
-                                      </span>
-                                    </h5>
-                                    <p className="text-[10px] text-brand-outline font-light mt-1 leading-relaxed">
-                                      تواصل فوراً مع طاقم دعم النخبة لطلب
-                                      المساعدة، أو قم بمشاركتنا انطباعك الفني
-                                      وتقييمك لقطع المجوهرات الفاخرة بعد
-                                      استلامها.
-                                    </p>
-                                  </div>
-                                  <div className="flex flex-wrap gap-2 shrink-0">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setRatingSubmitted(false);
-                                        setRatingComment("");
-                                        setRatingStars(5);
-                                        setShowRatingModal(true);
-                                      }}
-                                      className="flex items-center justify-center gap-1.5 px-4 py-2.5 text-[11px] font-bold text-brand-umber bg-white border border-brand-gold/30 hover:bg-brand-linen/40 rounded-sm shadow-sm transition-all cursor-pointer">
-                                      <Star className="w-3.5 h-3.5 text-brand-gold fill-brand-gold" />
-                                      <span>⭐ تقييم المنتج بعد الاستلام</span>
-                                    </button>
-
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setSupportSubmitted(false);
-                                        setSupportMessage("");
-                                        setShowSupportModal(true);
-                                      }}
-                                      className="flex items-center justify-center gap-1.5 px-4 py-2.5 text-[11px] font-bold text-white bg-brand-gold hover:bg-brand-umber rounded-sm shadow-sm transition-all cursor-pointer">
-                                      <MessageCircle className="w-3.5 h-3.5" />
-                                      <span>💬 التواصل مع الدعم</span>
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Customer & Shipping Summary details */}
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-brand-outline-variant/15 text-xs text-brand-umber font-light">
-                                <div className="space-y-2">
-                                  <h4 className="text-[10px] uppercase font-bold tracking-wider text-brand-outline">
-                                    Shipping Address / عنوان التوصيل
-                                  </h4>
-                                  <p>
-                                    <strong className="font-medium">
-                                      Name:
-                                    </strong>{" "}
-                                    {trackedOrder.shippingName}
-                                  </p>
-                                  <p>
-                                    <strong className="font-medium">
-                                      Address:
-                                    </strong>{" "}
-                                    {trackedOrder.shippingAddress},{" "}
-                                    {trackedOrder.shippingCity}
-                                  </p>
-                                  <p>
-                                    <strong className="font-medium">
-                                      Email:
-                                    </strong>{" "}
-                                    {trackedOrder.shippingEmail}
-                                  </p>
-                                </div>
-
-                                <div className="space-y-3">
-                                  <h4 className="text-[10px] uppercase font-bold tracking-wider text-brand-outline">
-                                    Products Ordered / المنتجات المطلوبة
-                                  </h4>
-                                  <div className="divide-y divide-brand-outline-variant/10 max-h-[160px] overflow-y-auto pr-2">
-                                    {trackedOrder.items?.map((item, idx) => (
-                                      <div
-                                        key={idx}
-                                        className="py-2 flex gap-3 items-center text-xs">
-                                        <img
-                                          src={item.product.image}
-                                          alt={item.product.name}
-                                          className="w-8 h-8 object-cover rounded bg-brand-linen/10 shrink-0 border border-brand-outline-variant/10"
-                                          referrerPolicy="no-referrer"
-                                        />
-                                        <div className="flex-1 min-w-0">
-                                          <p className="font-medium text-brand-umber truncate text-[11px]">
-                                            {item.product.name}
-                                          </p>
-                                          <p className="text-[9px] text-brand-outline font-light">
-                                            Size: {item.selectedSize} |{" "}
-                                            {item.selectedMaterial}
-                                          </p>
-                                        </div>
-                                        <div className="text-right shrink-0">
-                                          <p className="font-semibold text-brand-umber text-[11px]">
-                                            {item.quantity}x
-                                          </p>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Close result button */}
-                              <div className="flex justify-end pt-2 border-t border-brand-outline-variant/10">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setTrackedOrder(null);
-                                    setTrackInput("");
-                                  }}
-                                  className="text-[10px] text-brand-gold hover:text-brand-umber font-semibold uppercase tracking-wider transition-colors cursor-pointer">
-                                  Close Tracker / إغلاق
-                                </button>
-                              </div>
-                            </motion.div>
-                          );
-                        })()}
-                    </AnimatePresence>
-
-                    {/* Recent Orders List Quick Shortcuts */}
-                    {mergedRecentOrders.length > 0 && (
-                      <div className="space-y-4">
-                        <div
-                          className="flex flex-col sm:flex-row justify-between items-center border-b border-brand-outline-variant/10 pb-2 gap-2 text-right"
-                          dir="rtl">
-                          <h4 className="text-[10px] font-bold text-brand-outline uppercase tracking-wider">
-                            Your Recent Orders | طلباتك الأخيرة
-                          </h4>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (
-                                confirm(
-                                  "هل تريد حذف سجل الطلبات الأخيرة بالكامل من شاشة التتبع؟ / Do you want to clear your entire tracking history?",
-                                )
-                              ) {
-                                localStorage.removeItem("vero_orders");
-                                setOrdersVersion((v) => v + 1);
-                                setTrackedOrder(null);
-                              }
-                            }}
-                            className="text-[10px] text-red-600 hover:text-red-700 hover:underline font-semibold cursor-pointer">
-                            مسح كافة الطلبات من التتبع / Clear All Tracking
-                          </button>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                          {mergedRecentOrders.map((ord) => {
-                            const isSelected = trackedOrder?.id === ord.id;
-                            return (
-                              <button
-                                key={ord.id}
-                                type="button"
-                                onClick={() => {
-                                  handleTrackOrder(
-                                    undefined,
-                                    ord.orderNumber?.toString() || ord.id,
-                                  );
-                                }}
-                                className={`text-left p-4 rounded-sm border transition-all flex flex-col justify-between h-28 ${
-                                  isSelected
-                                    ? "bg-brand-linen/30 border-brand-gold shadow-sm"
-                                    : "bg-brand-linen/5 border-brand-outline-variant/15 hover:bg-brand-linen/10 hover:border-brand-outline-variant/40"
-                                }`}>
-                                <div className="w-full flex justify-between items-start">
-                                  <span className="font-mono text-xs font-bold text-brand-gold">
-                                    #{ord.orderNumber}
-                                  </span>
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-[8px] font-mono font-light text-brand-outline">
-                                      {ord.date}
-                                    </span>
-                                    <span
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (
-                                          confirm(
-                                            `هل تريد إزالة الطلب رقم #${ord.orderNumber} من هذه القائمة؟ / Remove order #${ord.orderNumber} from list?`,
-                                          )
-                                        ) {
-                                          try {
-                                            const saved =
-                                              localStorage.getItem(
-                                                "vero_orders",
-                                              );
-                                            const local: Order[] = saved
-                                              ? JSON.parse(saved)
-                                              : [];
-                                            const filtered = local.filter(
-                                              (o) =>
-                                                o.id !== ord.id &&
-                                                o.orderNumber?.toString() !==
-                                                  ord.orderNumber?.toString(),
-                                            );
-                                            localStorage.setItem(
-                                              "vero_orders",
-                                              JSON.stringify(filtered),
-                                            );
-                                            setOrdersVersion((v) => v + 1);
-                                            if (trackedOrder?.id === ord.id) {
-                                              setTrackedOrder(null);
-                                            }
-                                          } catch (err) {
-                                            // ignore
-                                          }
-                                        }
-                                      }}
-                                      className="text-brand-outline hover:text-red-600 p-0.5 rounded transition-colors cursor-pointer"
-                                      title="إزالة من القائمة / Remove from list">
-                                      <X className="w-3.5 h-3.5" />
-                                    </span>
-                                  </div>
-                                </div>
-
-                                <div className="mt-2 text-xs font-semibold text-brand-umber">
-                                  EGP {ord.total?.toLocaleString()}
-                                </div>
-
-                                <div className="w-full flex justify-between items-end mt-auto pt-2">
-                                  <span className="text-[9px] text-brand-outline/80 font-light truncate max-w-[120px]">
-                                    {ord.status}
-                                  </span>
-                                  <span className="text-[8px] font-bold text-brand-gold uppercase tracking-wider hover:underline shrink-0">
-                                    Track {isSelected ? "●" : "→"}
-                                  </span>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
                   </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Standalone Track Tab fallback */}
+          {activeTab === "track" && (
+            <motion.div
+              key="track"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="max-w-5xl mx-auto px-4 md:px-8 py-8 space-y-8"
+            >
+              {trackedOrder ? (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center bg-[#faf7f2] border border-[#eae3d9] p-3.5 rounded-xl max-w-3xl mx-auto" dir="rtl">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTrackedOrder(null);
+                        setTrackInput("");
+                      }}
+                      className="inline-flex items-center gap-2 text-xs font-bold text-[#c5a880] hover:text-[#1f1915] transition-colors cursor-pointer bg-white px-4 py-2 rounded-lg border border-[#eae3d9]"
+                    >
+                      <ArrowLeft className="w-4 h-4 rotate-180" />
+                      <span>بحث آخر / Search Another Order</span>
+                    </button>
+                    <span className="text-xs font-mono font-bold text-[#1f1915]">
+                      تفاصيل الطلب #{trackedOrder.orderNumber || trackedOrder.id}
+                    </span>
+                  </div>
+
+                  <OrderTrackingView
+                    order={trackedOrder}
+                    onBack={() => {
+                      setTrackedOrder(null);
+                      setTrackInput("");
+                    }}
+                    onContactSupport={() => {
+                      setSupportSubmitted(false);
+                      setSupportMessage("");
+                      setShowSupportModal(true);
+                    }}
+                    onCancelOrder={handleCancelOrder}
+                  />
+                </div>
+              ) : (
+                <div className="space-y-6 max-w-2xl mx-auto" dir="rtl">
+                  <form onSubmit={(e) => handleTrackOrder(e)} className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex-grow">
+                      <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#8c827a]" />
+                      <input
+                        type="text"
+                        placeholder="أدخل رقم الطلب (مثال: 1024) أو البريد الإلكتروني..."
+                        value={trackInput}
+                        onChange={(e) => setTrackInput(e.target.value)}
+                        className="w-full bg-white border border-[#eae3d9] rounded-xl text-xs pr-10 pl-4 py-3.5 text-[#1f1915] placeholder-[#8c827a]/60 outline-none focus:border-[#c5a880] focus:ring-1 focus:ring-[#c5a880]/30 font-mono text-right"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      className="bg-[#c5a880] hover:bg-[#a68253] text-white text-xs font-bold px-7 py-3.5 rounded-xl transition-all shadow-xs shrink-0 cursor-pointer"
+                    >
+                      تتبع الشحنة 🚚
+                    </button>
+                  </form>
+
+                  {trackError && (
+                    <p className="text-center text-xs text-rose-600 font-medium bg-rose-50 border border-rose-100 p-3 rounded-xl">
+                      {trackError}
+                    </p>
+                  )}
                 </div>
               )}
             </motion.div>
           )}
 
-          {activeTab === "our-story" && (
-            <motion.div
-              key="our-story"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="max-w-4xl mx-auto px-6 py-12 space-y-16">
-              <section className="text-center space-y-4">
-                <span className="text-brand-gold font-sans text-xs font-semibold tracking-[0.3em] uppercase block">
-                  ESTABLISHED 2024
-                </span>
-                <h1 className="font-serif text-4xl md:text-5xl lg:text-6xl text-brand-umber font-light">
-                  Our Story
-                </h1>
-                <p className="font-sans text-xs font-light text-brand-outline tracking-wider uppercase max-w-md mx-auto leading-relaxed">
-                  Timeless accessories forged in Florence, celebrating local
-                  artisan heritage.
-                </p>
-                <div className="w-12 h-px bg-brand-gold/40 mx-auto mt-6"></div>
-              </section>
 
-              {/* Stories sections loop */}
-              {STORIES.map((story, index) => {
-                const isEven = index % 2 === 0;
-                return (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.8 }}
-                    className={`grid grid-cols-1 md:grid-cols-2 gap-10 items-center ${
-                      isEven ? "" : "md:flex-row-reverse"
-                    }`}>
-                    <div
-                      className={`space-y-6 ${isEven ? "" : "md:order-last"}`}>
-                      <h3 className="font-serif text-2xl text-brand-umber font-semibold tracking-wide">
-                        {story.title}
-                      </h3>
-                      <p className="font-serif italic text-xs md:text-sm text-brand-outline leading-relaxed border-l-2 border-brand-gold/30 pl-4 py-1">
-                        "{story.quote}"
-                      </p>
-                      <p className="font-sans text-xs font-light text-brand-outline leading-relaxed">
-                        Every single collection is built inside small Italian
-                        workshops, utilizing natural processes and centuries-old
-                        Roman techniques. Hand-finished for premium luxury
-                        definition.
-                      </p>
-                    </div>
-                    <div className="aspect-[4/3] bg-brand-surface-low overflow-hidden shadow-sm rounded-sm">
-                      <img
-                        src={story.image}
-                        alt={story.title}
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </motion.div>
-          )}
 
-          {activeTab === "supabase" && (
+          {activeTab === "supabase" && user?.email?.toLowerCase() === "vero2026@vero.com" && (
             <motion.div
               key="supabase"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 10 }}
-              className="max-w-7xl mx-auto px-6 py-12 space-y-12 mt-16 md:mt-24">
+              className="max-w-7xl mx-auto px-6 py-12 space-y-12 mt-16 md:mt-24"
+            >
               <SupabasePlayground />
             </motion.div>
           )}
 
-          {activeTab === "platinum-lounge" &&
-            (user?.tier === "Platinum" || user?.tier === "Diamond") && (
-              <motion.div
-                key="platinum-lounge"
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.98 }}
-                className="max-w-7xl mx-auto px-6 py-12 space-y-12 mt-16 md:mt-24">
-                {/* Premium Header */}
-                <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-indigo-950 via-[#131124] to-slate-950 border border-teal-500/30 p-8 md:p-16 text-center space-y-4 shadow-2xl">
-                  {/* Metallic sweep */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-teal-400/10 to-transparent -translate-x-full animate-shimmer pointer-events-none" />
+          {activeTab === "platinum-lounge" && (user?.tier === "Platinum" || user?.tier === "Diamond") && (
+            <motion.div
+              key="platinum-lounge"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              className="max-w-7xl mx-auto px-6 py-12 space-y-12 mt-16 md:mt-24"
+            >
+              {/* Premium Header */}
+              <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-indigo-950 via-[#131124] to-slate-950 border border-teal-500/30 p-8 md:p-16 text-center space-y-4 shadow-2xl">
+                {/* Metallic sweep */}
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-teal-400/10 to-transparent -translate-x-full animate-shimmer pointer-events-none" />
 
-                  <div className="relative z-10 space-y-3 max-w-3xl mx-auto">
-                    <div className="flex items-center justify-center gap-2">
-                      <Sparkles className="w-5 h-5 text-teal-400 animate-pulse" />
-                      <span className="text-[10px] md:text-xs font-bold tracking-[0.3em] text-teal-400 uppercase">
-                        VERO SANCTUARY
-                      </span>
-                      <Sparkles className="w-5 h-5 text-teal-400 animate-pulse" />
-                    </div>
-                    <h1 className="font-serif text-3xl md:text-5xl text-white font-bold tracking-wide">
-                      The Platinum Lounge
-                    </h1>
-                    <p className="font-serif text-sm md:text-base text-teal-100/70 italic leading-relaxed">
-                      "صالة النخبة الخاصة بأعضاء البلاتينيوم والدايموند - عروض
-                      حصرية وقطع نادرة صممت خصيصاً لكم ولا يراها غيركم."
-                    </p>
-                    <p className="font-sans text-xs font-light text-slate-400 tracking-wider max-w-xl mx-auto leading-relaxed">
-                      An exclusive private showcase of bespoke masterpieces
-                      crafted by our head artisans in Florence. These works of
-                      art are strictly reserved for our top tier collectors.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Secret Offers Grid */}
-                <div className="space-y-6">
-                  <div className="border-b border-brand-outline-variant/30 pb-3 flex justify-between items-end">
-                    <div>
-                      <h4 className="font-serif text-xl text-brand-umber font-semibold">
-                        Secret Collections
-                      </h4>
-                      <p className="text-[10px] text-brand-outline font-sans tracking-wide uppercase mt-1">
-                        Certified Bespoke Creations
-                      </p>
-                    </div>
-                    <span className="text-[10px] font-mono font-semibold bg-teal-50 text-teal-700 px-3 py-1 border border-teal-100 rounded-full">
-                      3 Masterpieces Available
+                <div className="relative z-10 space-y-3 max-w-3xl mx-auto">
+                  <div className="flex items-center justify-center gap-2">
+                    <Sparkles className="w-5 h-5 text-teal-400 animate-pulse" />
+                    <span className="text-[10px] md:text-xs font-bold tracking-[0.3em] text-teal-400 uppercase">
+                      VERO SANCTUARY
                     </span>
+                    <Sparkles className="w-5 h-5 text-teal-400 animate-pulse" />
                   </div>
+                  <h1 className="font-serif text-3xl md:text-5xl text-white font-bold tracking-wide">
+                    The Platinum Lounge
+                  </h1>
+                  <p className="font-serif text-sm md:text-base text-teal-100/70 italic leading-relaxed">
+                    "صالة النخبة الخاصة بأعضاء البلاتينيوم والدايموند - عروض حصرية وقطع نادرة صممت خصيصاً لكم ولا يراها غيركم."
+                  </p>
+                  <p className="font-sans text-xs font-light text-slate-400 tracking-wider max-w-xl mx-auto leading-relaxed">
+                    An exclusive private showcase of bespoke masterpieces crafted by our head artisans in Florence. These works of art are strictly reserved for our top tier collectors.
+                  </p>
+                </div>
+              </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    {LOUNGE_PRODUCTS.map((prod) => (
-                      <motion.div
-                        key={prod.id}
-                        initial={{ opacity: 0, y: 15 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true }}
-                        className="bg-white border border-[#c5a880]/15 rounded-2xl overflow-hidden shadow-md flex flex-col group hover:shadow-xl transition-all duration-300">
-                        <div className="relative aspect-[4/3] bg-brand-surface-low overflow-hidden">
-                          <img
-                            src={prod.image}
-                            alt={prod.name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                            referrerPolicy="no-referrer"
-                          />
-                          <div className="absolute top-3 left-3 bg-teal-500 text-white text-[8px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full shadow">
-                            Bespoke Only
-                          </div>
+              {/* Secret Offers Grid */}
+              <div className="space-y-6">
+                <div className="border-b border-brand-outline-variant/30 pb-3 flex justify-between items-end">
+                  <div>
+                    <h4 className="font-serif text-xl text-brand-umber font-semibold">Secret Collections</h4>
+                    <p className="text-[10px] text-brand-outline font-sans tracking-wide uppercase mt-1">Certified Bespoke Creations</p>
+                  </div>
+                  <span className="text-[10px] font-mono font-semibold bg-teal-50 text-teal-700 px-3 py-1 border border-teal-100 rounded-full">
+                    3 Masterpieces Available
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                  {LOUNGE_PRODUCTS.map((prod) => (
+                    <motion.div
+                      key={prod.id}
+                      initial={{ opacity: 0, y: 15 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true }}
+                      className="bg-white border border-[#c5a880]/15 rounded-2xl overflow-hidden shadow-md flex flex-col group hover:shadow-xl transition-all duration-300"
+                    >
+                      <div className="relative aspect-[4/3] bg-brand-surface-low overflow-hidden">
+                        <img
+                          src={prod.image}
+                          alt={prod.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="absolute top-3 left-3 bg-teal-500 text-white text-[8px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full shadow">
+                          Bespoke Only
+                        </div>
+                      </div>
+
+                      <div className="p-5 flex-grow flex flex-col justify-between space-y-4">
+                        <div className="space-y-1">
+                          <h5 className="font-serif text-sm font-bold text-brand-umber tracking-wide">
+                            {prod.name}
+                          </h5>
+                          <p className="text-[11px] text-brand-outline font-light leading-relaxed">
+                            {prod.description}
+                          </p>
                         </div>
 
-                        <div className="p-5 flex-grow flex flex-col justify-between space-y-4">
-                          <div className="space-y-1">
-                            <h5 className="font-serif text-sm font-bold text-brand-umber tracking-wide">
-                              {prod.name}
-                            </h5>
-                            <p className="text-[11px] text-brand-outline font-light leading-relaxed">
-                              {prod.description}
-                            </p>
+                        <div className="pt-3 border-t border-[#c5a880]/10 flex justify-between items-center">
+                          <div>
+                            <p className="text-[8px] uppercase tracking-widest text-brand-outline">Collector Price</p>
+                            <p className="font-mono text-xs font-bold text-teal-700">EGP {prod.price.toLocaleString()}</p>
                           </div>
 
-                          <div className="pt-3 border-t border-[#c5a880]/10 flex justify-between items-center">
-                            <div>
-                              <p className="text-[8px] uppercase tracking-widest text-brand-outline">
-                                Collector Price
-                              </p>
-                              <p className="font-mono text-xs font-bold text-teal-700">
-                                EGP {prod.price.toLocaleString()}
-                              </p>
-                            </div>
-
-                            <button
-                              onClick={() => {
-                                handleAddToBag(prod, "Platinum", "One Size", 1);
-                                setAppNotification(
-                                  `Added ${prod.name} to your Private Bag`,
-                                );
-                              }}
-                              className="bg-slate-900 hover:bg-teal-700 text-white text-[9px] uppercase tracking-widest font-bold px-4 py-2 rounded-lg transition-all active:scale-95">
-                              Acquire Piece
-                            </button>
-                          </div>
+                          <button
+                            onClick={() => {
+                              handleAddToBag(prod, "Platinum", "One Size", 1);
+                              setAppNotification(`Added ${prod.name} to your Private Bag`);
+                            }}
+                            className="bg-slate-900 hover:bg-teal-700 text-white text-[9px] uppercase tracking-widest font-bold px-4 py-2 rounded-lg transition-all active:scale-95"
+                          >
+                            Acquire Piece
+                          </button>
                         </div>
-                      </motion.div>
-                    ))}
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Private Concierge Section */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6">
+                <div className="bg-[#f0f9ff]/40 border border-blue-200/50 rounded-2xl p-6 flex items-start gap-4 shadow-sm">
+                  <div className="p-3 bg-blue-100 text-blue-600 rounded-xl shrink-0">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div className="space-y-2">
+                    <h5 className="font-serif text-sm font-bold text-slate-800">Private Design Concierge</h5>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      "تواصل مباشرة مع كبير المصممين لدينا في فلورنسا لصياغة قطعة فريدة مصنوعة خصيصاً من أجلك."
+                    </p>
+                    <p className="text-[10px] text-slate-500 font-light leading-relaxed">
+                      As a Platinum / Diamond member, you have a direct priority communication channel for absolute custom jewelry creations.
+                    </p>
+                    <button
+                      onClick={() => setAppNotification("Your personal design concierge has been notified. They will contact you shortly.")}
+                      className="mt-2 bg-blue-600 hover:bg-blue-700 text-white text-[8px] font-bold uppercase tracking-wider px-3.5 py-2 rounded-lg transition-all"
+                    >
+                      Request Private Call
+                    </button>
                   </div>
                 </div>
 
-                {/* Private Concierge Section */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6">
-                  <div className="bg-[#f0f9ff]/40 border border-blue-200/50 rounded-2xl p-6 flex items-start gap-4 shadow-sm">
-                    <div className="p-3 bg-blue-100 text-blue-600 rounded-xl shrink-0">
-                      <Sparkles className="w-5 h-5" />
-                    </div>
-                    <div className="space-y-2">
-                      <h5 className="font-serif text-sm font-bold text-slate-800">
-                        Private Design Concierge
-                      </h5>
-                      <p className="text-xs text-slate-600 leading-relaxed">
-                        "تواصل مباشرة مع كبير المصممين لدينا في فلورنسا لصياغة
-                        قطعة فريدة مصنوعة خصيصاً من أجلك."
-                      </p>
-                      <p className="text-[10px] text-slate-500 font-light leading-relaxed">
-                        As a Platinum / Diamond member, you have a direct
-                        priority communication channel for absolute custom
-                        jewelry creations.
-                      </p>
-                      <button
-                        onClick={() =>
-                          setAppNotification(
-                            "Your personal design concierge has been notified. They will contact you shortly.",
-                          )
-                        }
-                        className="mt-2 bg-blue-600 hover:bg-blue-700 text-white text-[8px] font-bold uppercase tracking-wider px-3.5 py-2 rounded-lg transition-all">
-                        Request Private Call
-                      </button>
-                    </div>
+                <div className="bg-[#fdf8f6]/50 border border-orange-200/50 rounded-2xl p-6 flex items-start gap-4 shadow-sm">
+                  <div className="p-3 bg-orange-100 text-orange-600 rounded-xl shrink-0">
+                    <Sparkles className="w-5 h-5 animate-pulse" />
                   </div>
-
-                  <div className="bg-[#fdf8f6]/50 border border-orange-200/50 rounded-2xl p-6 flex items-start gap-4 shadow-sm">
-                    <div className="p-3 bg-orange-100 text-orange-600 rounded-xl shrink-0">
-                      <Sparkles className="w-5 h-5 animate-pulse" />
-                    </div>
-                    <div className="space-y-2">
-                      <h5 className="font-serif text-sm font-bold text-slate-800">
-                        Exclusive Florence Luxury Invite
-                      </h5>
-                      <p className="text-xs text-slate-600 leading-relaxed">
-                        "دعوة خاصة لحضور معرض فيرو الفاخر القادم بفلورنسا
-                        الإيطالية - شامل الشحن الجوي السريع وتذكرة الطيران."
-                      </p>
-                      <p className="text-[10px] text-slate-500 font-light leading-relaxed">
-                        Complimentary business-class flight and premium boutique
-                        tour in Florence, fully taken care of by the VERO luxury
-                        program.
-                      </p>
-                      <button
-                        onClick={() =>
-                          setAppNotification(
-                            "Your invitation coordinates are being assembled. Our travel advisor will reach out today.",
-                          )
-                        }
-                        className="mt-2 bg-slate-900 hover:bg-slate-800 text-white text-[8px] font-bold uppercase tracking-wider px-3.5 py-2 rounded-lg transition-all">
-                        Acquire Lounge Invite
-                      </button>
-                    </div>
+                  <div className="space-y-2">
+                    <h5 className="font-serif text-sm font-bold text-slate-800">Exclusive Florence Luxury Invite</h5>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      "دعوة خاصة لحضور معرض فيرو الفاخر القادم بفلورنسا الإيطالية - شامل الشحن الجوي السريع وتذكرة الطيران."
+                    </p>
+                    <p className="text-[10px] text-slate-500 font-light leading-relaxed">
+                      Complimentary business-class flight and premium boutique tour in Florence, fully taken care of by the VERO luxury program.
+                    </p>
+                    <button
+                      onClick={() => setAppNotification("Your invitation coordinates are being assembled. Our travel advisor will reach out today.")}
+                      className="mt-2 bg-slate-900 hover:bg-slate-800 text-white text-[8px] font-bold uppercase tracking-wider px-3.5 py-2 rounded-lg transition-all"
+                    >
+                      Acquire Lounge Invite
+                    </button>
                   </div>
                 </div>
-              </motion.div>
-            )}
+              </div>
+            </motion.div>
+          )}
 
-          {activeTab === "admin" &&
-            user?.email?.toLowerCase() === "vero2026@vero.com" && (
-              <motion.div
-                key="admin"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                transition={{ duration: 0.5 }}
-                className="max-w-7xl mx-auto px-6 py-6 md:py-12">
-                <AdminPanel
-                  products={products}
-                  setProducts={setProducts}
-                  onResetDatabase={handleResetDatabase}
-                  onClose={() => setActiveTab("home")}
-                  orders={orders}
-                  setOrders={setOrders}
-                  promos={promos}
-                  setPromos={setPromos}
-                />
-              </motion.div>
-            )}
+          {activeTab === "admin" && user?.email?.toLowerCase() === "vero2026@vero.com" && (
+            <motion.div
+              key="admin"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              transition={{ duration: 0.5 }}
+              className="max-w-7xl mx-auto px-6 py-6 md:py-12"
+            >
+              <AdminPanel
+                products={products}
+                setProducts={setProducts}
+                onResetDatabase={handleResetDatabase}
+                onClose={() => setActiveTab("home")}
+                onOpenSupabase={() => setActiveTab("supabase")}
+                orders={orders}
+                setOrders={setOrders}
+                promos={promos}
+                setPromos={setPromos}
+                reviews={allReviews}
+                onRefreshReviews={fetchReviews}
+              />
+            </motion.div>
+          )}
         </AnimatePresence>
       </main>
 
@@ -3150,10 +2483,13 @@ export default function App() {
         product={quickViewProduct}
         onClose={() => setQuickViewProduct(null)}
         onAddToBag={handleAddToBag}
-        isFavorited={
-          quickViewProduct ? isFavorited(quickViewProduct.id) : false
-        }
+        isFavorited={quickViewProduct ? isFavorited(quickViewProduct.id) : false}
         toggleFavorite={toggleFavorite}
+        user={user}
+        userOrders={orders.filter((o) => o.shippingEmail?.toLowerCase() === user?.email?.toLowerCase() || o.email?.toLowerCase() === user?.email?.toLowerCase())}
+        allReviews={allReviews}
+        onRefreshReviews={fetchReviews}
+        onOpenAuth={() => setAuthModalOpen(true)}
       />
 
       {/* Private Member Authentication Modal */}
@@ -3182,7 +2518,8 @@ export default function App() {
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 180 }}
-              className="relative w-full max-w-md h-full bg-brand-linen shadow-2xl border-l border-brand-outline-variant/30 flex flex-col z-10">
+              className="relative w-full max-w-md h-full bg-brand-linen shadow-2xl border-l border-brand-outline-variant/30 flex flex-col z-10"
+            >
               <div className="p-6 border-b border-brand-outline-variant/20 flex justify-between items-center bg-[#fff8f3]">
                 <h3 className="font-serif text-lg text-brand-umber font-semibold uppercase tracking-wider">
                   Search Boutique
@@ -3190,7 +2527,8 @@ export default function App() {
                 <button
                   onClick={() => setSearchOpen(false)}
                   className="p-2 text-brand-outline hover:text-brand-gold transition-colors"
-                  aria-label="Close search">
+                  aria-label="Close search"
+                >
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -3208,7 +2546,8 @@ export default function App() {
                   {searchQuery && (
                     <button
                       onClick={() => setSearchQuery("")}
-                      className="absolute right-2 top-3 text-brand-outline/60 hover:text-brand-gold">
+                      className="absolute right-2 top-3 text-brand-outline/60 hover:text-brand-gold"
+                    >
                       <X className="w-4 h-4" />
                     </button>
                   )}
@@ -3229,7 +2568,8 @@ export default function App() {
                           setSearchOpen(false);
                           setActiveTab("shop");
                         }}
-                        className="px-3.5 py-2 bg-brand-surface-low border border-brand-outline-variant/20 hover:border-brand-gold rounded-full text-[10px] font-sans font-medium text-brand-outline hover:text-brand-gold uppercase tracking-wider transition-all">
+                        className="px-3.5 py-2 bg-brand-surface-low border border-brand-outline-variant/20 hover:border-brand-gold rounded-full text-[10px] font-sans font-medium text-brand-outline hover:text-brand-gold uppercase tracking-wider transition-all"
+                      >
                         {cat.name}
                       </button>
                     ))}
@@ -3250,7 +2590,8 @@ export default function App() {
                             setSearchOpen(false);
                             handleProductDetailNavigate(prod);
                           }}
-                          className="flex items-center gap-4 cursor-pointer group">
+                          className="flex items-center gap-4 cursor-pointer group"
+                        >
                           <div className="w-12 h-15 bg-brand-surface-low overflow-hidden rounded-sm shadow-sm">
                             <img
                               src={prod.image}
@@ -3264,8 +2605,7 @@ export default function App() {
                               {prod.name}
                             </h4>
                             <p className="text-[10px] text-brand-outline font-light uppercase tracking-wider">
-                              {prod.categoryName} • EGP{" "}
-                              {prod.price.toLocaleString()}
+                              {prod.categoryName} • EGP {prod.price.toLocaleString()}
                             </p>
                           </div>
                           <ChevronRight className="w-4 h-4 text-brand-outline/30 group-hover:text-brand-gold transition-colors" />
@@ -3277,7 +2617,8 @@ export default function App() {
                             setSearchOpen(false);
                             setActiveTab("shop");
                           }}
-                          className="w-full text-center text-xs text-brand-gold font-semibold underline underline-offset-4 uppercase tracking-widest pt-2 block">
+                          className="w-full text-center text-xs text-brand-gold font-semibold underline underline-offset-4 uppercase tracking-widest pt-2 block"
+                        >
                           View all results
                         </button>
                       )}
@@ -3313,14 +2654,16 @@ export default function App() {
             initial={{ opacity: 0, y: -40, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -40, scale: 0.95 }}
-            className="fixed top-24 left-1/2 -translate-x-1/2 z-[250] bg-brand-umber text-white border border-brand-gold/30 px-6 py-4 shadow-2xl rounded-sm flex items-center gap-3.5 max-w-md w-[calc(100%-2rem)]">
+            className="fixed top-24 left-1/2 -translate-x-1/2 z-[250] bg-brand-umber text-white border border-brand-gold/30 px-6 py-4 shadow-2xl rounded-sm flex items-center gap-3.5 max-w-md w-[calc(100%-2rem)]"
+          >
             <Info className="w-5 h-5 text-brand-gold shrink-0" />
             <p className="text-xs font-semibold tracking-wide text-brand-linen leading-relaxed flex-grow">
               {appNotification}
             </p>
             <button
               onClick={() => setAppNotification(null)}
-              className="text-brand-outline/60 hover:text-white transition-colors shrink-0 p-1">
+              className="text-brand-outline/60 hover:text-white transition-colors shrink-0 p-1"
+            >
               <X className="w-4 h-4" />
             </button>
           </motion.div>
@@ -3334,23 +2677,22 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/80 backdrop-blur-md pointer-events-auto">
+            className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/80 backdrop-blur-md pointer-events-auto"
+          >
             <motion.div
               initial={{ scale: 0.9, y: 30 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 30 }}
               transition={{ type: "spring", damping: 24, stiffness: 190 }}
-              className="bg-gradient-to-br from-amber-950 via-[#1c1610] to-[#0c0a08] border-2 border-amber-400/40 p-8 md:p-12 rounded-3xl text-center max-w-md mx-4 shadow-[0_20px_60px_rgba(251,191,36,0.18)] relative overflow-hidden">
+              className="bg-gradient-to-br from-amber-950 via-[#1c1610] to-[#0c0a08] border-2 border-amber-400/40 p-8 md:p-12 rounded-3xl text-center max-w-md mx-4 shadow-[0_20px_60px_rgba(251,191,36,0.18)] relative overflow-hidden"
+            >
               {/* Shimmer sweep */}
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-amber-400/15 to-transparent -translate-x-full animate-shimmer pointer-events-none" />
 
               <div className="relative z-10 space-y-6">
                 {/* Large sparkling crown/badge */}
                 <div className="mx-auto w-16 h-16 rounded-full bg-amber-400/15 border border-amber-400/30 flex items-center justify-center shadow-[0_0_20px_rgba(251,191,36,0.2)]">
-                  <Sparkles
-                    className="w-8 h-8 text-amber-400 animate-spin"
-                    style={{ animationDuration: "8s" }}
-                  />
+                  <Sparkles className="w-8 h-8 text-amber-400 animate-spin" style={{ animationDuration: "8s" }} />
                 </div>
 
                 <div className="space-y-2">
@@ -3361,15 +2703,15 @@ export default function App() {
                     Welcome Back, {welcomeTier} Member ✨
                   </h3>
                   <p className="text-[11px] text-amber-100/60 font-serif italic max-w-xs mx-auto leading-relaxed">
-                    "Every purchase unlocks a higher status. Welcome to our most
-                    exclusive luxury circle."
+                    "Every purchase unlocks a higher status. Welcome to our most exclusive luxury circle."
                   </p>
                 </div>
 
                 <div className="pt-2">
                   <button
                     onClick={() => setShowGoldWelcome(false)}
-                    className="text-[9px] uppercase tracking-widest font-semibold border border-amber-400/35 hover:border-amber-400/60 text-amber-400 bg-amber-400/5 hover:bg-amber-400/10 px-5 py-2 rounded-full transition-all">
+                    className="text-[9px] uppercase tracking-widest font-semibold border border-amber-400/35 hover:border-amber-400/60 text-amber-400 bg-amber-400/5 hover:bg-amber-400/10 px-5 py-2 rounded-full transition-all"
+                  >
                     Enter Private Collection
                   </button>
                 </div>
@@ -3388,14 +2730,14 @@ export default function App() {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               className="bg-[#fffdfb] border border-brand-gold/30 p-6 md:p-8 max-w-md w-full shadow-2xl rounded-sm space-y-6 text-brand-umber text-right"
-              dir="rtl">
-              <div
-                className="flex justify-between items-center border-b border-brand-gold/10 pb-3"
-                dir="ltr">
+              dir="rtl"
+            >
+              <div className="flex justify-between items-center border-b border-brand-gold/10 pb-3" dir="ltr">
                 <button
                   type="button"
                   onClick={() => setShowRatingModal(false)}
-                  className="text-brand-outline hover:text-brand-umber p-1 cursor-pointer">
+                  className="text-brand-outline hover:text-brand-umber p-1 cursor-pointer"
+                >
                   <X className="w-4 h-4" />
                 </button>
                 <h3 className="font-serif text-base font-semibold text-brand-umber">
@@ -3407,8 +2749,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className="text-center space-y-2">
                     <p className="text-xs text-brand-outline leading-relaxed">
-                      يسعدنا سماع رأيك الثمين حول الجودة، ومواصفات الصياغة
-                      اليدوية بعد الاستلام.
+                      يسعدنا سماع رأيك الثمين حول الجودة، ومواصفات الصياغة اليدوية بعد الاستلام.
                     </p>
                     {/* Stars row */}
                     <div className="flex justify-center gap-1.5 py-3" dir="ltr">
@@ -3417,7 +2758,8 @@ export default function App() {
                           key={star}
                           type="button"
                           onClick={() => setRatingStars(star)}
-                          className="hover:scale-110 transition-transform cursor-pointer">
+                          className="hover:scale-110 transition-transform cursor-pointer"
+                        >
                           <Star
                             className={`w-8 h-8 ${
                               star <= ratingStars
@@ -3447,11 +2789,10 @@ export default function App() {
                     type="button"
                     onClick={() => {
                       setRatingSubmitted(true);
-                      triggerAppNotification(
-                        "تم استلام تقييمك بنجاح! شكراً لمشاركتنا تجربتك الفاخرة.",
-                      );
+                      triggerAppNotification("تم استلام تقييمك بنجاح! شكراً لمشاركتنا تجربتك الفاخرة.");
                     }}
-                    className="w-full bg-brand-gold hover:bg-brand-umber text-white text-xs font-semibold py-3.5 rounded-sm transition-all shadow-sm tracking-widest uppercase cursor-pointer text-center">
+                    className="w-full bg-brand-gold hover:bg-brand-umber text-white text-xs font-semibold py-3.5 rounded-sm transition-all shadow-sm tracking-widest uppercase cursor-pointer text-center"
+                  >
                     إرسال التقييم / Submit Review
                   </button>
                 </div>
@@ -3464,13 +2805,13 @@ export default function App() {
                     تم استلام التقييم بنجاح!
                   </h4>
                   <p className="text-xs text-brand-outline leading-relaxed max-w-xs mx-auto text-center">
-                    نشكرك جزيل الشكر على تقييمك الفاخر لمنتجات VERO. لقد تم
-                    تسجيل رأيك في أرشيف صالون النخبة وسيظهر للعملاء قريباً.
+                    نشكرك جزيل الشكر على تقييمك الفاخر لمنتجات VERO. لقد تم تسجيل رأيك في أرشيف صالون النخبة وسيظهر للعملاء قريباً.
                   </p>
                   <button
                     type="button"
                     onClick={() => setShowRatingModal(false)}
-                    className="border border-brand-gold/30 hover:bg-brand-linen/40 text-brand-umber text-xs font-semibold px-6 py-2.5 rounded-sm transition-all cursor-pointer block mx-auto">
+                    className="border border-brand-gold/30 hover:bg-brand-linen/40 text-brand-umber text-xs font-semibold px-6 py-2.5 rounded-sm transition-all cursor-pointer block mx-auto"
+                  >
                     إغلاق / Close
                   </button>
                 </div>
@@ -3489,14 +2830,14 @@ export default function App() {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               className="bg-[#fffdfb] border border-brand-gold/30 p-6 md:p-8 max-w-md w-full shadow-2xl rounded-sm space-y-6 text-brand-umber text-right"
-              dir="rtl">
-              <div
-                className="flex justify-between items-center border-b border-brand-gold/10 pb-3"
-                dir="ltr">
+              dir="rtl"
+            >
+              <div className="flex justify-between items-center border-b border-brand-gold/10 pb-3" dir="ltr">
                 <button
                   type="button"
                   onClick={() => setShowSupportModal(false)}
-                  className="text-brand-outline hover:text-brand-umber p-1 cursor-pointer">
+                  className="text-brand-outline hover:text-brand-umber p-1 cursor-pointer"
+                >
                   <X className="w-4 h-4" />
                 </button>
                 <h3 className="font-serif text-base font-semibold text-brand-umber">
@@ -3508,8 +2849,7 @@ export default function App() {
                 <div className="space-y-4">
                   <div className="text-center space-y-2">
                     <p className="text-xs text-brand-outline leading-relaxed text-center">
-                      مدراء العلاقات الفاخرة متواجدون لمساعدتك فوراً بخصوص
-                      شحنتك، تعديل المقاسات، أو طلب قطعة مخصصة.
+                      مدراء العلاقات الفاخرة متواجدون لمساعدتك فوراً بخصوص شحنتك، تعديل المقاسات، أو طلب قطعة مخصصة.
                     </p>
                   </div>
 
@@ -3531,19 +2871,19 @@ export default function App() {
                       type="button"
                       onClick={() => {
                         setSupportSubmitted(true);
-                        triggerAppNotification(
-                          "تم إرسال طلب الدعم بنجاح! سيتواصل معك أحد المستشارين.",
-                        );
+                        triggerAppNotification("تم إرسال طلب الدعم بنجاح! سيتواصل معك أحد المستشارين.");
                       }}
-                      className="w-full bg-brand-gold hover:bg-brand-umber text-white text-xs font-semibold py-3.5 rounded-sm transition-all shadow-sm tracking-widest uppercase cursor-pointer text-center">
+                      className="w-full bg-brand-gold hover:bg-brand-umber text-white text-xs font-semibold py-3.5 rounded-sm transition-all shadow-sm tracking-widest uppercase cursor-pointer text-center"
+                    >
                       إرسال الطلب / Send Message
                     </button>
-
+                    
                     <a
                       href="https://wa.me/201000000000"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-3.5 rounded-sm transition-all shadow-sm tracking-widest uppercase flex items-center justify-center gap-1.5 cursor-pointer">
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-3.5 rounded-sm transition-all shadow-sm tracking-widest uppercase flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
                       <span>💬 تواصل سريع عبر WhatsApp</span>
                     </a>
                   </div>
@@ -3557,14 +2897,13 @@ export default function App() {
                     تم إرسال استفسارك بنجاح
                   </h4>
                   <p className="text-xs text-brand-outline leading-relaxed max-w-xs mx-auto text-center">
-                    لقد تم إرسال رسالتك مباشرة لمدير العلاقات العامة لخدمة
-                    النخبة، وسنتواصل معك خلال دقائق مباشرة عبر الواتساب أو
-                    الهاتف المسجل بالطلب للرد على استفسارك بأسرع وقت.
+                    لقد تم إرسال رسالتك مباشرة لمدير العلاقات العامة لخدمة النخبة، وسنتواصل معك خلال دقائق مباشرة عبر الواتساب أو الهاتف المسجل بالطلب للرد على استفسارك بأسرع وقت.
                   </p>
                   <button
                     type="button"
                     onClick={() => setShowSupportModal(false)}
-                    className="border border-brand-gold/30 hover:bg-brand-linen/40 text-brand-umber text-xs font-semibold px-6 py-2.5 rounded-sm transition-all cursor-pointer block mx-auto">
+                    className="border border-brand-gold/30 hover:bg-brand-linen/40 text-brand-umber text-xs font-semibold px-6 py-2.5 rounded-sm transition-all cursor-pointer block mx-auto"
+                  >
                     إغلاق / Close
                   </button>
                 </div>

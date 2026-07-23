@@ -13,24 +13,103 @@ import { createClient } from "@supabase/supabase-js";
 import { PRODUCTS } from "./src/data.ts";
 
 // Dual ESM/CJS safe resolution of filename and directory
-const currentFilename =
-  typeof __filename !== "undefined"
-    ? __filename
-    : fileURLToPath(import.meta.url);
-const currentDirname =
-  typeof __dirname !== "undefined" ? __dirname : path.dirname(currentFilename);
+const currentFilename = typeof __filename !== "undefined" 
+  ? __filename 
+  : fileURLToPath(import.meta.url);
+const currentDirname = typeof __dirname !== "undefined" 
+  ? __dirname 
+  : path.dirname(currentFilename);
+
+import {
+  generateSalt,
+  hashPassword,
+  verifyPassword,
+  createSession,
+  validateSession,
+  destroySession,
+  checkRateLimit,
+  checkLoginBruteForce,
+  recordFailedLogin,
+  clearFailedLogin,
+  sanitizeString,
+  validateFileUpload,
+  logAuditEvent,
+  getAuditLogsFromDisk,
+} from "./src/serverSecurity.ts";
 
 const app = express();
 const PORT = 3000;
 const DB_FILE = path.join(process.cwd(), "products-db.json");
 const ORDERS_FILE = path.join(process.cwd(), "orders-db.json");
 
-app.use(express.json());
+// Parse JSON Body (Limit size to prevent payload bombing)
+app.use(express.json({ limit: "10mb" }));
+
+// 1. Security Headers Middleware (Enterprise Grade)
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: data: blob:;"
+  );
+  next();
+});
+
+// 2. Global Rate Limiter Middleware
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/")) {
+    const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "127.0.0.1";
+    if (!checkRateLimit(clientIp, 300, 60000)) {
+      return res.status(429).json({ error: "Rate Limit Exceeded: Too many requests from this IP." });
+    }
+  }
+  next();
+});
+
+// 3. Authentication & Session Validation Middleware
+function authMiddleware(req: any, res: any, next: any) {
+  const authHeader = req.headers.authorization;
+  const sessionHeader = req.headers["x-session-token"] as string;
+  let token = sessionHeader;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.substring(7);
+  }
+
+  const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "127.0.0.1";
+  const userAgent = req.headers["user-agent"] || "";
+
+  const session = validateSession(token, clientIp, userAgent);
+  if (session) {
+    req.user = session;
+  } else {
+    req.user = null;
+  }
+  next();
+}
+
+app.use(authMiddleware);
+
+// 4. Authorization Guards
+function requireAuth(req: any, res: any, next: any) {
+  if (!req.user) {
+    return res.status(401).json({ error: "Unauthorized: Active user session required." });
+  }
+  next();
+}
+
+function requireAdmin(req: any, res: any, next: any) {
+  if (!req.user || req.user.role !== "admin") {
+    return res.status(403).json({ error: "Forbidden: Enterprise Admin privileges required." });
+  }
+  next();
+}
 
 // Supabase Connection Helpers
 const rawUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
-const rawKey =
-  process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
+const rawKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
 
 const SUPABASE_URL = rawUrl.replace(/^['"]|['"]$/g, "").trim();
 const SUPABASE_ANON_KEY = rawKey.replace(/^['"]|['"]$/g, "").trim();
@@ -61,9 +140,7 @@ function getSupabase() {
 let sseClients: any[] = [];
 
 function broadcastUpdate() {
-  console.log(
-    `Broadcasting real-time update to ${sseClients.length} connected clients...`,
-  );
+  console.log(`Broadcasting real-time update to ${sseClients.length} connected clients...`);
   sseClients.forEach((client) => {
     try {
       client.write("data: REFRESH\n\n");
@@ -126,7 +203,7 @@ app.get("/api/updates", (req, res) => {
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache, no-transform",
-    Connection: "keep-alive",
+    "Connection": "keep-alive",
     "X-Accel-Buffering": "no",
   });
 
@@ -149,6 +226,168 @@ app.get("/api/updates", (req, res) => {
   });
 });
 
+// --- AUTHENTICATION & LOGIN ENDPOINTS ---
+app.post("/api/auth/login", (req, res) => {
+  const { email, password, rememberMe } = req.body;
+  const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "127.0.0.1";
+  const userAgent = req.headers["user-agent"] || "";
+
+  if (!email || !password) {
+    return res.status(400).json({ error: "Email and password are required." });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  // Brute Force Lockout Check
+  const lock = checkLoginBruteForce(cleanEmail);
+  if (lock.isLocked) {
+    return res.status(429).json({
+      error: `Account locked due to repeated failed attempts. Please try again in ${lock.remainingSeconds} seconds.`
+    });
+  }
+
+  const users = getUsersFromDisk();
+  const user = users.find((u: any) => u.email?.toLowerCase() === cleanEmail);
+
+  if (!user) {
+    recordFailedLogin(cleanEmail);
+    return res.status(401).json({ error: "Invalid email or password." });
+  }
+
+  const isValidPassword = verifyPassword(password, user.passwordHash, user.salt);
+  if (!isValidPassword) {
+    const attempts = recordFailedLogin(cleanEmail);
+    return res.status(401).json({ error: `Invalid email or password. Attempt ${attempts} of 5.` });
+  }
+
+  clearFailedLogin(cleanEmail);
+
+  const role = user.role || (cleanEmail === "vero2026@vero.com" ? "admin" : "customer");
+  const session = createSession(user.id, user.email, role, user.name, clientIp, userAgent, !!rememberMe);
+
+  if (role === "admin") {
+    logAuditEvent(user.id, user.email, "Admin Login", "Auth System", "Executive Admin logged in successfully", clientIp);
+  }
+
+  res.json({
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: role,
+      tier: user.tier || "Bronze",
+      loyaltyPoints: user.loyaltyPoints || 0,
+      totalSpent: user.totalSpent || 0,
+      joinedDate: user.joinedDate || new Date().toISOString(),
+      avatar: user.avatar || "default",
+      sessionToken: session.token
+    }
+  });
+});
+
+app.post("/api/auth/register", (req, res) => {
+  const { name, email, password, rememberMe } = req.body;
+  const clientIp = (req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "127.0.0.1";
+  const userAgent = req.headers["user-agent"] || "";
+
+  if (!email || !password || !name) {
+    return res.status(400).json({ error: "Name, email, and password are required." });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanName = sanitizeString(name);
+
+  if (!cleanEmail.includes("@")) {
+    return res.status(400).json({ error: "Invalid email format." });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({ error: "Password must be at least 6 characters long." });
+  }
+
+  const users = getUsersFromDisk();
+  const existing = users.find((u: any) => u.email?.toLowerCase() === cleanEmail);
+
+  if (existing) {
+    return res.status(400).json({ error: "An account with this email address already exists." });
+  }
+
+  const salt = generateSalt();
+  const passwordHash = hashPassword(password, salt);
+  const role = cleanEmail === "vero2026@vero.com" ? "admin" : "customer";
+  const userId = `u-${Date.now()}`;
+
+  const newUser = {
+    id: userId,
+    email: cleanEmail,
+    name: cleanName,
+    role: role,
+    tier: "Bronze",
+    loyaltyPoints: 0,
+    totalSpent: 0,
+    joinedDate: new Date().toISOString(),
+    avatar: "default",
+    salt: salt,
+    passwordHash: passwordHash
+  };
+
+  users.push(newUser);
+  saveUsersToDisk(users);
+
+  const session = createSession(userId, cleanEmail, role, cleanName, clientIp, userAgent, !!rememberMe);
+
+  res.json({
+    user: {
+      id: userId,
+      name: cleanName,
+      email: cleanEmail,
+      role: role,
+      tier: "Bronze",
+      loyaltyPoints: 0,
+      totalSpent: 0,
+      joinedDate: newUser.joinedDate,
+      avatar: "default",
+      sessionToken: session.token
+    }
+  });
+});
+
+app.post("/api/auth/logout", requireAuth, (req: any, res: any) => {
+  if (req.user?.token) {
+    destroySession(req.user.token);
+  }
+  res.json({ success: true, message: "Logged out successfully" });
+});
+
+app.get("/api/auth/me", requireAuth, (req: any, res: any) => {
+  res.json({ user: req.user });
+});
+
+// --- AUDIT LOGS ENDPOINT (ADMIN ONLY) ---
+app.get("/api/audit-logs", requireAdmin, (req: any, res: any) => {
+  const logs = getAuditLogsFromDisk();
+  res.json(logs);
+});
+
+// --- SECURE FILE UPLOAD ENDPOINT ---
+app.post("/api/upload", requireAuth, (req: any, res: any) => {
+  const { fileBase64, fileName, mimeType } = req.body;
+  if (!fileBase64 || !fileName || !mimeType) {
+    return res.status(400).json({ error: "Missing upload parameters." });
+  }
+
+  const validation = validateFileUpload(fileBase64, fileName, mimeType, 5);
+  if (!validation.valid) {
+    return res.status(400).json({ error: validation.error });
+  }
+
+  if (req.user?.role === "admin") {
+    logAuditEvent(req.user.userId, req.user.email, "Image Upload", fileName, `Uploaded file (${mimeType})`, req.user.ip);
+  }
+
+  res.json({ url: fileBase64, message: "Image validated and uploaded securely." });
+});
+
 // API Routes - Products
 app.get("/api/products", async (req, res) => {
   const supabase = getSupabase();
@@ -159,11 +398,9 @@ app.get("/api/products", async (req, res) => {
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (!productsError && productsData && productsData.length > 0) {
+      if (!productsError && productsData) {
         // Fetch secondary images
-        const { data: imagesData } = await supabase
-          .from("product_images")
-          .select("*");
+        const { data: imagesData } = await supabase.from("product_images").select("*");
         const imagesMap: Record<string, string[]> = {};
         if (imagesData) {
           imagesData.forEach((img: any) => {
@@ -187,7 +424,7 @@ app.get("/api/products", async (req, res) => {
           sizeOptions: p.size_options || [],
           details: p.details || [],
           craftsmanship: p.craftsmanship || "",
-          stock: p.stock === null ? undefined : Number(p.stock),
+          stock: p.stock === null ? undefined : Number(p.stock)
         }));
         return res.json(mapped);
       }
@@ -198,83 +435,91 @@ app.get("/api/products", async (req, res) => {
   res.json(getProductsFromDisk());
 });
 
-app.post("/api/products", async (req, res) => {
+app.post("/api/products/clear", requireAdmin, async (req: any, res: any) => {
+  saveProductsToDisk([]);
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      await supabase.from("product_images").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      await supabase.from("cart").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      await supabase.from("wishlist").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      await supabase.from("reviews").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+      await supabase.from("products").delete().neq("id", "placeholder");
+    } catch (err) {
+      console.error("Supabase clear products error:", err);
+    }
+  }
+  logAuditEvent(req.user.userId, req.user.email, "Clear All Products", "Catalog", "Cleared full product catalog", req.user.ip);
+  broadcastUpdate();
+  res.json([]);
+});
+
+app.post("/api/products", requireAdmin, async (req: any, res: any) => {
   const newProduct = req.body;
   if (!newProduct.id) {
     newProduct.id = `custom-${Date.now()}`;
   }
+
+  logAuditEvent(req.user.userId, req.user.email, "Create Product", newProduct.name, `Created product ID ${newProduct.id} for EGP ${newProduct.price}`, req.user.ip);
 
   const supabase = getSupabase();
   if (supabase) {
     try {
       const { data, error } = await supabase
         .from("products")
-        .insert([
-          {
-            id: newProduct.id,
-            name: newProduct.name,
-            category_id: newProduct.categoryId || "html",
-            category_name: newProduct.categoryName || "HTML",
-            price: newProduct.price,
-            image: newProduct.image,
-            tagline: newProduct.tagline || "",
-            description: newProduct.description || "",
-            is_new: !!newProduct.isNew,
-            material_options: newProduct.materialOptions || [],
-            size_options: newProduct.sizeOptions || [],
-            details: newProduct.details || [],
-            craftsmanship: newProduct.craftsmanship || "",
-            stock: newProduct.stock === undefined ? null : newProduct.stock,
-          },
-        ])
+        .insert([{
+          id: newProduct.id,
+          name: newProduct.name,
+          category_id: newProduct.categoryId || "html",
+          category_name: newProduct.categoryName || "HTML",
+          price: newProduct.price,
+          image: newProduct.image,
+          tagline: newProduct.tagline || "",
+          description: newProduct.description || "",
+          is_new: !!newProduct.isNew,
+          material_options: newProduct.materialOptions || [],
+          size_options: newProduct.sizeOptions || [],
+          details: newProduct.details || [],
+          craftsmanship: newProduct.craftsmanship || "",
+          stock: newProduct.stock === undefined ? null : newProduct.stock
+        }])
         .select()
         .single();
 
       if (!error && data) {
         // Add secondary images if any
-        if (
-          newProduct.secondaryImages &&
-          newProduct.secondaryImages.length > 0
-        ) {
+        if (newProduct.secondaryImages && newProduct.secondaryImages.length > 0) {
           const imageRows = newProduct.secondaryImages.map((img: string) => ({
             product_id: newProduct.id,
-            image_url: img,
+            image_url: img
           }));
           await supabase.from("product_images").insert(imageRows);
         }
 
         // Return updated list
-        const { data: updatedList } = await supabase
-          .from("products")
-          .select("*")
-          .order("created_at", { ascending: false });
+        const { data: updatedList } = await supabase.from("products").select("*").order("created_at", { ascending: false });
         if (updatedList) {
           broadcastUpdate();
-          return res.json(
-            updatedList.map((p) => ({
-              id: p.id,
-              name: p.name,
-              categoryId: p.category_id,
-              categoryName: p.category_name,
-              price: Number(p.price),
-              image: p.image,
-              description: p.description,
-              tagline: p.tagline,
-              isNew: p.is_new,
-              materialOptions: p.material_options,
-              sizeOptions: p.size_options,
-              details: p.details,
-              craftsmanship: p.craftsmanship,
-              stock: p.stock === null ? undefined : p.stock,
-            })),
-          );
+          return res.json(updatedList.map(p => ({
+            id: p.id,
+            name: p.name,
+            categoryId: p.category_id,
+            categoryName: p.category_name,
+            price: Number(p.price),
+            image: p.image,
+            description: p.description,
+            tagline: p.tagline,
+            isNew: p.is_new,
+            materialOptions: p.material_options,
+            sizeOptions: p.size_options,
+            details: p.details,
+            craftsmanship: p.craftsmanship,
+            stock: p.stock === null ? undefined : p.stock
+          })));
         }
       }
     } catch (err) {
-      console.error(
-        "Supabase insert product error, falling back to disk:",
-        err,
-      );
+      console.error("Supabase insert product error, falling back to disk:", err);
     }
   }
 
@@ -285,9 +530,11 @@ app.post("/api/products", async (req, res) => {
   res.json(products);
 });
 
-app.put("/api/products/:id", async (req, res) => {
+app.put("/api/products/:id", requireAdmin, async (req: any, res: any) => {
   const productId = req.params.id;
   const updatedProduct = req.body;
+
+  logAuditEvent(req.user.userId, req.user.email, "Edit Product", updatedProduct.name || productId, `Updated product attributes`, req.user.ip);
 
   const supabase = getSupabase();
   if (supabase) {
@@ -307,8 +554,7 @@ app.put("/api/products/:id", async (req, res) => {
           size_options: updatedProduct.sizeOptions,
           details: updatedProduct.details,
           craftsmanship: updatedProduct.craftsmanship,
-          stock:
-            updatedProduct.stock === undefined ? null : updatedProduct.stock,
+          stock: updatedProduct.stock === undefined ? null : updatedProduct.stock
         })
         .eq("id", productId)
         .select()
@@ -316,55 +562,39 @@ app.put("/api/products/:id", async (req, res) => {
 
       if (!error && data) {
         // Recreate secondary images
-        await supabase
-          .from("product_images")
-          .delete()
-          .eq("product_id", productId);
-        if (
-          updatedProduct.secondaryImages &&
-          updatedProduct.secondaryImages.length > 0
-        ) {
-          const imageRows = updatedProduct.secondaryImages.map(
-            (img: string) => ({
-              product_id: productId,
-              image_url: img,
-            }),
-          );
+        await supabase.from("product_images").delete().eq("product_id", productId);
+        if (updatedProduct.secondaryImages && updatedProduct.secondaryImages.length > 0) {
+          const imageRows = updatedProduct.secondaryImages.map((img: string) => ({
+            product_id: productId,
+            image_url: img
+          }));
           await supabase.from("product_images").insert(imageRows);
         }
 
         // Return updated list
-        const { data: updatedList } = await supabase
-          .from("products")
-          .select("*")
-          .order("created_at", { ascending: false });
+        const { data: updatedList } = await supabase.from("products").select("*").order("created_at", { ascending: false });
         if (updatedList) {
           broadcastUpdate();
-          return res.json(
-            updatedList.map((p) => ({
-              id: p.id,
-              name: p.name,
-              categoryId: p.category_id,
-              categoryName: p.category_name,
-              price: Number(p.price),
-              image: p.image,
-              description: p.description,
-              tagline: p.tagline,
-              isNew: p.is_new,
-              materialOptions: p.material_options,
-              sizeOptions: p.size_options,
-              details: p.details,
-              craftsmanship: p.craftsmanship,
-              stock: p.stock === null ? undefined : p.stock,
-            })),
-          );
+          return res.json(updatedList.map(p => ({
+            id: p.id,
+            name: p.name,
+            categoryId: p.category_id,
+            categoryName: p.category_name,
+            price: Number(p.price),
+            image: p.image,
+            description: p.description,
+            tagline: p.tagline,
+            isNew: p.is_new,
+            materialOptions: p.material_options,
+            sizeOptions: p.size_options,
+            details: p.details,
+            craftsmanship: p.craftsmanship,
+            stock: p.stock === null ? undefined : p.stock
+          })));
         }
       }
     } catch (err) {
-      console.error(
-        "Supabase update product error, falling back to disk:",
-        err,
-      );
+      console.error("Supabase update product error, falling back to disk:", err);
     }
   }
 
@@ -380,60 +610,57 @@ app.put("/api/products/:id", async (req, res) => {
   }
 });
 
-app.delete("/api/products/:id", async (req, res) => {
+app.delete("/api/products/:id", requireAdmin, async (req: any, res: any) => {
   const productId = req.params.id;
+
+  logAuditEvent(req.user.userId, req.user.email, "Delete Product", productId, `Deleted product ID ${productId}`, req.user.ip);
+
+  // Always remove from disk database
+  const diskProducts = getProductsFromDisk();
+  const filteredDisk = diskProducts.filter((p: any) => p.id !== productId);
+  saveProductsToDisk(filteredDisk);
 
   const supabase = getSupabase();
   if (supabase) {
     try {
-      const { error } = await supabase
-        .from("products")
-        .delete()
-        .eq("id", productId);
+      // Clean up child tables to avoid foreign key constraints
+      await supabase.from("product_images").delete().eq("product_id", productId);
+      await supabase.from("cart").delete().eq("product_id", productId);
+      await supabase.from("wishlist").delete().eq("product_id", productId);
+      await supabase.from("reviews").delete().eq("product_id", productId);
+      await supabase.from("products").delete().eq("id", productId);
 
-      if (!error) {
-        const { data: updatedList } = await supabase
-          .from("products")
-          .select("*")
-          .order("created_at", { ascending: false });
-        if (updatedList) {
-          broadcastUpdate();
-          return res.json(
-            updatedList.map((p) => ({
-              id: p.id,
-              name: p.name,
-              categoryId: p.category_id,
-              categoryName: p.category_name,
-              price: Number(p.price),
-              image: p.image,
-              description: p.description,
-              tagline: p.tagline,
-              isNew: p.is_new,
-              materialOptions: p.material_options,
-              sizeOptions: p.size_options,
-              details: p.details,
-              craftsmanship: p.craftsmanship,
-              stock: p.stock === null ? undefined : p.stock,
-            })),
-          );
-        }
+      const { data: updatedList } = await supabase.from("products").select("*").order("created_at", { ascending: false });
+      if (updatedList && updatedList.length > 0) {
+        broadcastUpdate();
+        return res.json(updatedList.map(p => ({
+          id: p.id,
+          name: p.name,
+          categoryId: p.category_id,
+          categoryName: p.category_name,
+          price: Number(p.price),
+          image: p.image,
+          description: p.description,
+          tagline: p.tagline,
+          isNew: p.is_new,
+          materialOptions: p.material_options,
+          sizeOptions: p.size_options,
+          details: p.details,
+          craftsmanship: p.craftsmanship,
+          stock: p.stock === null ? undefined : p.stock
+        })));
       }
     } catch (err) {
-      console.error(
-        "Supabase delete product error, falling back to disk:",
-        err,
-      );
+      console.error("Supabase delete product error:", err);
     }
   }
 
-  const products = getProductsFromDisk();
-  const filtered = products.filter((p: any) => p.id !== productId);
-  saveProductsToDisk(filtered);
   broadcastUpdate();
-  res.json(filtered);
+  res.json(filteredDisk);
 });
 
-app.post("/api/products/reset", async (req, res) => {
+app.post("/api/products/reset", requireAdmin, async (req: any, res: any) => {
+  logAuditEvent(req.user.userId, req.user.email, "Reset Products", "Catalog", "Reset products to default catalog state", req.user.ip);
   const supabase = getSupabase();
   if (supabase) {
     try {
@@ -446,21 +673,16 @@ app.post("/api/products/reset", async (req, res) => {
         { id: "earrings", name: "Earrings" },
         { id: "bracelets", name: "Bracelets" },
         { id: "leather-goods", name: "Leather Goods" },
-        { id: "accessories", name: "Accessories" },
+        { id: "accessories", name: "Accessories" }
       ];
-      await supabase
-        .from("categories")
-        .upsert(categoriesToInsert, { onConflict: "id" });
+      await supabase.from("categories").upsert(categoriesToInsert, { onConflict: "id" });
 
       // Clear secondary images and products in order
-      await supabase
-        .from("product_images")
-        .delete()
-        .neq("id", "00000000-0000-0000-0000-000000000000");
+      await supabase.from("product_images").delete().neq("id", "00000000-0000-0000-0000-000000000000");
       await supabase.from("products").delete().neq("id", "placeholder");
 
       // Insert back defaults
-      const dbRows = PRODUCTS.map((p) => ({
+      const dbRows = PRODUCTS.map(p => ({
         id: p.id,
         name: p.name,
         category_id: p.categoryId,
@@ -474,17 +696,14 @@ app.post("/api/products/reset", async (req, res) => {
         size_options: p.sizeOptions || [],
         details: p.details || [],
         craftsmanship: p.craftsmanship,
-        stock: p.stock === undefined ? null : p.stock,
+        stock: p.stock === undefined ? null : p.stock
       }));
 
       await supabase.from("products").insert(dbRows);
       broadcastUpdate();
       return res.json(PRODUCTS);
     } catch (err) {
-      console.error(
-        "Supabase reset products error, falling back to disk:",
-        err,
-      );
+      console.error("Supabase reset products error, falling back to disk:", err);
     }
   }
 
@@ -494,8 +713,10 @@ app.post("/api/products/reset", async (req, res) => {
 });
 
 // API Routes - Orders
-app.get("/api/orders", async (req, res) => {
+app.get("/api/orders", async (req: any, res: any) => {
   const supabase = getSupabase();
+  let allOrders: any[] = [];
+
   if (supabase) {
     try {
       const { data: dbOrders, error: ordersError } = await supabase
@@ -504,7 +725,9 @@ app.get("/api/orders", async (req, res) => {
         .order("created_at", { ascending: false });
 
       if (!ordersError && dbOrders) {
-        const { data: dbItems } = await supabase.from("order_items").select(`
+        const { data: dbItems } = await supabase
+          .from("order_items")
+          .select(`
             order_id,
             quantity,
             selected_material,
@@ -518,28 +741,23 @@ app.get("/api/orders", async (req, res) => {
         if (dbItems) {
           dbItems.forEach((item: any) => {
             if (!itemsMap[item.order_id]) itemsMap[item.order_id] = [];
-            const prodData = item.products || {
-              name: "Archived Item",
-              price: item.price,
-              image: "images/placeholder.jpg",
-              category_name: "Catalog",
-            };
+            const prodData = item.products || { name: "Archived Item", price: item.price, image: "images/placeholder.jpg", category_name: "Catalog" };
             itemsMap[item.order_id].push({
               product: {
                 id: item.product_id,
                 name: prodData.name,
                 price: Number(item.price),
                 image: prodData.image,
-                categoryName: prodData.category_name,
+                categoryName: prodData.category_name
               },
               quantity: item.quantity,
               selectedMaterial: item.selected_material,
-              selectedSize: item.selected_size,
+              selectedSize: item.selected_size
             });
           });
         }
 
-        const mappedOrders = dbOrders.map((o: any) => ({
+        allOrders = dbOrders.map((o: any) => ({
           id: o.id,
           orderNumber: o.order_number,
           date: o.date,
@@ -552,30 +770,63 @@ app.get("/api/orders", async (req, res) => {
           shippingCity: o.shipping_city,
           shippingZip: o.shipping_zip || "",
           shippingPhone: o.shipping_phone || "",
-          items: itemsMap[o.id] || [],
+          items: itemsMap[o.id] || []
         }));
-        return res.json(mappedOrders);
       }
     } catch (err) {
       console.error("Supabase load orders error, falling back to disk:", err);
+      allOrders = getOrdersFromDisk();
     }
+  } else {
+    allOrders = getOrdersFromDisk();
   }
 
-  const orders = getOrdersFromDisk();
-  res.json(orders);
+  // Security Filtering (Require ownership for customers, full access for admins)
+  if (req.user?.role === "admin") {
+    return res.json(allOrders);
+  }
+
+  if (req.user) {
+    const userOrders = allOrders.filter(
+      (o: any) =>
+        o.shippingEmail?.toLowerCase() === req.user.email.toLowerCase() ||
+        o.userId === req.user.userId
+    );
+    return res.json(userOrders);
+  }
+
+  // Unauthenticated lookup with orderNumber & email
+  const { email, orderNumber } = req.query;
+  if (email && orderNumber) {
+    const matched = allOrders.filter(
+      (o: any) =>
+        o.orderNumber === orderNumber &&
+        o.shippingEmail?.toLowerCase() === (email as string).toLowerCase()
+    );
+    return res.json(matched);
+  }
+
+  return res.json([]);
 });
 
-app.post("/api/orders", async (req, res) => {
+app.post("/api/orders", async (req: any, res: any) => {
   const newOrder = req.body;
   if (!newOrder.id) {
     newOrder.id = `order-${Date.now()}`;
   }
 
+  // Bind order to logged in user ID if available
+  if (req.user) {
+    newOrder.userId = req.user.userId;
+    newOrder.shippingEmail = req.user.email;
+  }
+
   const supabase = getSupabase();
   if (supabase) {
     try {
-      const { error: orderError } = await supabase.from("orders").insert([
-        {
+      const { error: orderError } = await supabase
+        .from("orders")
+        .insert([{
           id: newOrder.id,
           order_number: newOrder.orderNumber,
           email: newOrder.shippingEmail,
@@ -586,9 +837,8 @@ app.post("/api/orders", async (req, res) => {
           shipping_phone: newOrder.shippingPhone || null,
           total: newOrder.total,
           status: newOrder.status,
-          date: newOrder.date,
-        },
-      ]);
+          date: newOrder.date
+        }]);
 
       if (!orderError) {
         // Insert order items
@@ -598,21 +848,13 @@ app.post("/api/orders", async (req, res) => {
           quantity: item.quantity,
           selected_material: item.selectedMaterial,
           selected_size: item.selectedSize,
-          price: item.product.price,
+          price: item.product.price
         }));
 
         await supabase.from("order_items").insert(itemRows);
 
-        // Fetch updated list
-        const { data: dbOrders } = await supabase
-          .from("orders")
-          .select("*")
-          .order("created_at", { ascending: false });
-        if (dbOrders) {
-          // Re-fetch everything and trigger updates
-          broadcastUpdate();
-          return res.json(dbOrders);
-        }
+        broadcastUpdate();
+        return res.json(newOrder);
       }
     } catch (err) {
       console.error("Supabase insert order error, falling back to disk:", err);
@@ -623,12 +865,14 @@ app.post("/api/orders", async (req, res) => {
   orders.unshift(newOrder);
   saveOrdersToDisk(orders);
   broadcastUpdate();
-  res.json(orders);
+  res.json(newOrder);
 });
 
-app.put("/api/orders/:id", async (req, res) => {
+app.put("/api/orders/:id", requireAdmin, async (req: any, res: any) => {
   const orderId = req.params.id;
   const updatedOrder = req.body;
+
+  logAuditEvent(req.user.userId, req.user.email, "Update Order Status", orderId, `Changed order status to ${updatedOrder.status}`, req.user.ip);
 
   const supabase = getSupabase();
   if (supabase) {
@@ -661,8 +905,10 @@ app.put("/api/orders/:id", async (req, res) => {
   }
 });
 
-app.delete("/api/orders/:id", async (req, res) => {
+app.delete("/api/orders/:id", requireAdmin, async (req: any, res: any) => {
   const orderId = req.params.id;
+
+  logAuditEvent(req.user.userId, req.user.email, "Delete Order", orderId, `Deleted order ID ${orderId}`, req.user.ip);
 
   const supabase = getSupabase();
   if (supabase) {
@@ -674,10 +920,7 @@ app.delete("/api/orders/:id", async (req, res) => {
 
       if (!error) {
         broadcastUpdate();
-        const { data: dbOrders } = await supabase
-          .from("orders")
-          .select("*")
-          .order("created_at", { ascending: false });
+        const { data: dbOrders } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
         if (dbOrders) return res.json(dbOrders);
       }
     } catch (err) {
@@ -704,7 +947,7 @@ function getRewardsFromDisk() {
   } catch (err) {
     console.error("Error reading rewards database:", err);
   }
-  return []; // Empty by default so the admin is the one who adds them!
+  return [];
 }
 
 function saveRewardsToDisk(rewards: any[]) {
@@ -719,11 +962,12 @@ app.get("/api/rewards", (req, res) => {
   res.json(getRewardsFromDisk());
 });
 
-app.post("/api/rewards", (req, res) => {
+app.post("/api/rewards", requireAdmin, (req: any, res: any) => {
   const newReward = req.body;
   if (!newReward.id) {
     newReward.id = `reward-${Date.now()}`;
   }
+  logAuditEvent(req.user.userId, req.user.email, "Create Reward", newReward.title, `Cost ${newReward.cost} points`, req.user.ip);
   const rewards = getRewardsFromDisk();
   rewards.push(newReward);
   saveRewardsToDisk(rewards);
@@ -731,13 +975,139 @@ app.post("/api/rewards", (req, res) => {
   res.json(rewards);
 });
 
-app.delete("/api/rewards/:id", (req, res) => {
+app.delete("/api/rewards/:id", requireAdmin, (req: any, res: any) => {
   const rewardId = req.params.id;
+  logAuditEvent(req.user.userId, req.user.email, "Delete Reward", rewardId, `Deleted reward ID ${rewardId}`, req.user.ip);
   const rewards = getRewardsFromDisk();
   const filtered = rewards.filter((r: any) => r.id !== rewardId);
   saveRewardsToDisk(filtered);
   broadcastUpdate();
   res.json(filtered);
+});
+
+// --- USERS MANAGEMENT DYNAMIC DATABASE & API ENDPOINTS ---
+const USERS_FILE = path.join(process.cwd(), "users-db.json");
+
+function getUsersFromDisk() {
+  let users: any[] = [];
+  try {
+    if (fs.existsSync(USERS_FILE)) {
+      const content = fs.readFileSync(USERS_FILE, "utf-8");
+      users = JSON.parse(content);
+    }
+  } catch (err) {
+    console.error("Error reading users database:", err);
+  }
+
+  if (!users || users.length === 0) {
+    users = [
+      {
+        id: "u-1",
+        email: "vero2026@vero.com",
+        name: "VERO Executive Admin",
+        role: "admin",
+        tier: "Diamond",
+        loyaltyPoints: 12500,
+        totalSpent: 45000,
+        joinedDate: "2025-01-01"
+      },
+      {
+        id: "u-2",
+        email: "youssef.ahmed@example.com",
+        name: "يوسف أحمد",
+        role: "customer",
+        tier: "Gold",
+        loyaltyPoints: 1850,
+        totalSpent: 8500,
+        joinedDate: "2025-03-12"
+      },
+      {
+        id: "u-3",
+        email: "sarah.mansour@example.com",
+        name: "سارة منصور",
+        role: "customer",
+        tier: "Silver",
+        loyaltyPoints: 620,
+        totalSpent: 2400,
+        joinedDate: "2025-05-18"
+      }
+    ];
+  }
+
+  let dirty = false;
+  users.forEach((u) => {
+    if (u.email?.toLowerCase() === "vero2026@vero.com") {
+      u.role = "admin";
+      if (!u.passwordHash) {
+        u.salt = generateSalt();
+        u.passwordHash = hashPassword("VeroAdmin2026!Password", u.salt);
+        dirty = true;
+      }
+    } else {
+      if (!u.role) u.role = "customer";
+      if (!u.passwordHash) {
+        u.salt = generateSalt();
+        u.passwordHash = hashPassword("Password123!", u.salt);
+        dirty = true;
+      }
+    }
+  });
+
+  if (dirty) {
+    saveUsersToDisk(users);
+  }
+
+  return users;
+}
+
+function saveUsersToDisk(users: any[]) {
+  try {
+    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), "utf-8");
+  } catch (err) {
+    console.error("Error saving users to database:", err);
+  }
+}
+
+app.get("/api/users", requireAdmin, (req, res) => {
+  // Strip password hashes before returning user records
+  const users = getUsersFromDisk().map(({ passwordHash, salt, ...safeUser }) => safeUser);
+  res.json(users);
+});
+
+app.post("/api/users", requireAdmin, (req: any, res: any) => {
+  const newUser = req.body;
+  if (!newUser.id) {
+    newUser.id = `user-${Date.now()}`;
+  }
+  logAuditEvent(req.user.userId, req.user.email, "Update User Account", newUser.email, `Updated role: ${newUser.role || 'customer'}`, req.user.ip);
+  const users = getUsersFromDisk();
+  const existingIndex = users.findIndex((u: any) => u.email?.toLowerCase() === newUser.email?.toLowerCase());
+  if (existingIndex >= 0) {
+    users[existingIndex] = { ...users[existingIndex], ...newUser };
+  } else {
+    users.push(newUser);
+  }
+  saveUsersToDisk(users);
+  broadcastUpdate();
+  const safeUsers = users.map(({ passwordHash, salt, ...safeUser }) => safeUser);
+  res.json(safeUsers);
+});
+
+app.put("/api/users/:id", requireAuth, (req: any, res: any) => {
+  const userId = req.params.id;
+  const updates = req.body;
+
+  // Authorization check: User can only edit own profile unless admin
+  if (req.user.role !== "admin" && req.user.userId !== userId && req.user.email !== userId) {
+    return res.status(403).json({ error: "Forbidden: You are only allowed to update your own profile." });
+  }
+
+  const users = getUsersFromDisk();
+  const updatedUsers = users.map((u: any) => (u.id === userId || u.email === userId ? { ...u, ...updates } : u));
+  saveUsersToDisk(updatedUsers);
+  broadcastUpdate();
+  const safeUsers = updatedUsers.map(({ passwordHash, salt, ...safeUser }) => safeUser);
+  res.json(safeUsers);
 });
 
 // --- GENERAL PROMO CODES DYNAMIC DATABASE & API ENDPOINTS ---
@@ -752,7 +1122,7 @@ function getPromosFromDisk() {
   } catch (err) {
     console.error("Error reading promos database:", err);
   }
-  return []; // Empty by default so the admin is the one who adds them!
+  return [];
 }
 
 function savePromosToDisk(promos: any[]) {
@@ -767,15 +1137,15 @@ app.get("/api/promos", (req, res) => {
   res.json(getPromosFromDisk());
 });
 
-app.post("/api/promos", (req, res) => {
+app.post("/api/promos", requireAdmin, (req: any, res: any) => {
   const newPromo = req.body;
   if (!newPromo.id) {
     newPromo.id = `promo-${Date.now()}`;
   }
-  // Ensure uppercase code
   if (newPromo.code) {
     newPromo.code = newPromo.code.toUpperCase();
   }
+  logAuditEvent(req.user.userId, req.user.email, "Create Promo Code", newPromo.code, `Discount ${newPromo.discountPercent}%`, req.user.ip);
   const promos = getPromosFromDisk();
   promos.push(newPromo);
   savePromosToDisk(promos);
@@ -783,13 +1153,580 @@ app.post("/api/promos", (req, res) => {
   res.json(promos);
 });
 
-app.delete("/api/promos/:id", (req, res) => {
+app.delete("/api/promos/:id", requireAdmin, (req: any, res: any) => {
   const promoId = req.params.id;
+  logAuditEvent(req.user.userId, req.user.email, "Delete Promo Code", promoId, `Deleted promo ID ${promoId}`, req.user.ip);
   const promos = getPromosFromDisk();
   const filtered = promos.filter((p: any) => p.id !== promoId);
   savePromosToDisk(filtered);
   broadcastUpdate();
   res.json(filtered);
+});
+
+// --- REVIEWS & RATINGS SYSTEM DYNAMIC DATABASE & API ENDPOINTS ---
+const REVIEWS_FILE = path.join(process.cwd(), "reviews-db.json");
+const NOTIFICATIONS_FILE = path.join(process.cwd(), "notifications-db.json");
+
+function getReviewsFromDisk() {
+  try {
+    if (fs.existsSync(REVIEWS_FILE)) {
+      const content = fs.readFileSync(REVIEWS_FILE, "utf-8");
+      return JSON.parse(content);
+    }
+  } catch (err) {
+    console.error("Error reading reviews database:", err);
+  }
+  return [];
+}
+
+function saveReviewsToDisk(reviews: any[]) {
+  try {
+    fs.writeFileSync(REVIEWS_FILE, JSON.stringify(reviews, null, 2), "utf-8");
+  } catch (err) {
+    console.error("Error saving reviews to database:", err);
+  }
+}
+
+function getNotificationsFromDisk() {
+  try {
+    if (fs.existsSync(NOTIFICATIONS_FILE)) {
+      const content = fs.readFileSync(NOTIFICATIONS_FILE, "utf-8");
+      return JSON.parse(content);
+    }
+  } catch (err) {
+    console.error("Error reading notifications database:", err);
+  }
+  return [];
+}
+
+function saveNotificationsToDisk(notifications: any[]) {
+  try {
+    fs.writeFileSync(NOTIFICATIONS_FILE, JSON.stringify(notifications, null, 2), "utf-8");
+  } catch (err) {
+    console.error("Error saving notifications to database:", err);
+  }
+}
+
+function createNotification(userId: string, title: string, message: string, type: string, reviewId?: string) {
+  const notifications = getNotificationsFromDisk();
+  const notif = {
+    id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    userId,
+    title,
+    message,
+    read: false,
+    type,
+    reviewId,
+    createdAt: new Date().toISOString()
+  };
+  notifications.unshift(notif);
+  saveNotificationsToDisk(notifications);
+  broadcastUpdate();
+}
+
+// GET all reviews (with optional filtering)
+app.get("/api/reviews", async (req, res) => {
+  const { productId, userId, status } = req.query;
+
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      let query = supabase.from("reviews").select("*").order("created_at", { ascending: false });
+      if (productId) query = query.eq("product_id", productId);
+      if (userId) query = query.eq("user_id", userId);
+      if (status) query = query.eq("status", status);
+
+      const { data: dbReviews, error } = await query;
+      if (!error && dbReviews) {
+        // Fetch child data
+        const { data: images } = await supabase.from("review_images").select("*");
+        const { data: votes } = await supabase.from("review_votes").select("*");
+        const { data: reports } = await supabase.from("review_reports").select("*");
+        const { data: replies } = await supabase.from("review_replies").select("*");
+
+        const imagesMap: Record<string, string[]> = {};
+        if (images) {
+          images.forEach((img: any) => {
+            if (!imagesMap[img.review_id]) imagesMap[img.review_id] = [];
+            imagesMap[img.review_id].push(img.image_url);
+          });
+        }
+
+        const votesMap: Record<string, string[]> = {};
+        if (votes) {
+          votes.forEach((v: any) => {
+            if (!votesMap[v.review_id]) votesMap[v.review_id] = [];
+            votesMap[v.review_id].push(v.user_id);
+          });
+        }
+
+        const reportsMap: Record<string, any[]> = {};
+        if (reports) {
+          reports.forEach((r: any) => {
+            if (!reportsMap[r.review_id]) reportsMap[r.review_id] = [];
+            reportsMap[r.review_id].push({
+              id: r.id,
+              reviewId: r.review_id,
+              userId: r.user_id,
+              userName: r.user_name || "Customer",
+              reason: r.reason,
+              details: r.details || "",
+              createdAt: r.created_at
+            });
+          });
+        }
+
+        const repliesMap: Record<string, any> = {};
+        if (replies) {
+          replies.forEach((rep: any) => {
+            repliesMap[rep.review_id] = {
+              id: rep.id,
+              reviewId: rep.review_id,
+              adminName: rep.admin_name || "VERO Official",
+              reply: rep.reply,
+              createdAt: rep.created_at
+            };
+          });
+        }
+
+        const mapped = dbReviews.map((r: any) => ({
+          id: r.id,
+          productId: r.product_id,
+          productName: r.product_name,
+          productImage: r.product_image,
+          orderId: r.order_id,
+          userId: r.user_id,
+          userName: r.user_name || "Customer",
+          userEmail: r.user_email || "",
+          rating: Number(r.rating),
+          title: r.title || "",
+          review: r.review || r.comment || "",
+          verifiedPurchase: !!r.verified_purchase,
+          recommend: r.recommend !== false,
+          isAnonymous: !!r.is_anonymous,
+          status: r.status || "approved",
+          images: imagesMap[r.id] || r.images || [],
+          videoUrl: r.video_url || "",
+          helpfulCount: Number(r.helpful_count || (votesMap[r.id] ? votesMap[r.id].length : 0)),
+          votedUserIds: votesMap[r.id] || [],
+          reports: reportsMap[r.id] || [],
+          reply: repliesMap[r.id] || null,
+          createdAt: r.created_at || new Date().toISOString(),
+          updatedAt: r.updated_at || new Date().toISOString(),
+          author: r.is_anonymous ? "عميل VERO المميز" : (r.user_name || "Customer"),
+          comment: r.review || r.comment || ""
+        }));
+
+        return res.json(mapped);
+      }
+    } catch (err) {
+      console.error("Supabase load reviews error, falling back to disk:", err);
+    }
+  }
+
+  let reviews = getReviewsFromDisk();
+  if (productId) {
+    reviews = reviews.filter((r: any) => r.productId === productId);
+  }
+  if (userId) {
+    reviews = reviews.filter((r: any) => r.userId === userId);
+  }
+  if (status) {
+    reviews = reviews.filter((r: any) => r.status === status);
+  }
+  res.json(reviews);
+});
+
+// POST Create new review
+app.post("/api/reviews", requireAuth, async (req: any, res: any) => {
+  const newReview = req.body;
+  if (!newReview.id) {
+    newReview.id = `review-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  }
+
+  // Force user identity from validated session
+  newReview.userId = req.user.userId;
+  newReview.userEmail = req.user.email;
+  newReview.userName = req.user.name;
+
+  newReview.createdAt = newReview.createdAt || new Date().toISOString();
+  newReview.updatedAt = new Date().toISOString();
+  newReview.status = newReview.status || "approved"; // Default auto-approve
+  newReview.helpfulCount = 0;
+  newReview.votedUserIds = [];
+  newReview.reports = [];
+  newReview.images = newReview.images || [];
+
+  // Verify Purchase check from orders
+  const orders = getOrdersFromDisk();
+  const userOrders = orders.filter((o: any) =>
+    (o.shippingEmail?.toLowerCase() === newReview.userEmail?.toLowerCase() ||
+     o.id === newReview.orderId) &&
+    (o.status?.toLowerCase().includes("delivered") || o.status === "تم التوصيل" || o.status === "Delivered")
+  );
+
+  const hasPurchasedProduct = userOrders.some((o: any) =>
+    o.items?.some((item: any) => item.product?.id === newReview.productId)
+  );
+
+  newReview.verifiedPurchase = hasPurchasedProduct || !!newReview.verifiedPurchase;
+
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      const { error } = await supabase.from("reviews").insert([{
+        id: newReview.id,
+        product_id: newReview.productId,
+        product_name: newReview.productName,
+        product_image: newReview.productImage,
+        order_id: newReview.orderId,
+        user_id: newReview.userId,
+        user_name: newReview.userName,
+        user_email: newReview.userEmail,
+        rating: newReview.rating,
+        title: newReview.title,
+        review: newReview.review,
+        verified_purchase: newReview.verifiedPurchase,
+        recommend: newReview.recommend,
+        is_anonymous: newReview.isAnonymous,
+        status: newReview.status,
+        video_url: newReview.videoUrl,
+        helpful_count: 0
+      }]);
+
+      if (!error) {
+        if (newReview.images && newReview.images.length > 0) {
+          const imgRows = newReview.images.map((img: string) => ({
+            review_id: newReview.id,
+            image_url: img
+          }));
+          await supabase.from("review_images").insert(imgRows);
+        }
+      }
+    } catch (err) {
+      console.error("Supabase insert review error:", err);
+    }
+  }
+
+  const reviews = getReviewsFromDisk();
+  const existingIdx = reviews.findIndex((r: any) => r.userId === newReview.userId && r.productId === newReview.productId);
+  if (existingIdx !== -1) {
+    reviews[existingIdx] = { ...reviews[existingIdx], ...newReview };
+  } else {
+    reviews.unshift(newReview);
+  }
+
+  saveReviewsToDisk(reviews);
+  broadcastUpdate();
+  res.json(newReview);
+});
+
+// PUT Update existing review (or change status / reply)
+app.put("/api/reviews/:id", requireAuth, async (req: any, res: any) => {
+  const reviewId = req.params.id;
+  const updates = req.body;
+
+  const reviews = getReviewsFromDisk();
+  const index = reviews.findIndex((r: any) => r.id === reviewId);
+
+  if (index === -1) {
+    return res.status(404).json({ error: "Review not found" });
+  }
+
+  const targetReview = reviews[index];
+
+  // RBAC Ownership check: Non-admin can only update their own review and CANNOT alter moderation status
+  if (req.user.role !== "admin") {
+    if (targetReview.userId !== req.user.userId && targetReview.userEmail?.toLowerCase() !== req.user.email.toLowerCase()) {
+      return res.status(403).json({ error: "Forbidden: You can only edit your own review." });
+    }
+    // Prevent non-admin from manipulating moderation status
+    delete updates.status;
+  } else if (updates.status && updates.status !== targetReview.status) {
+    logAuditEvent(req.user.userId, req.user.email, "Moderate Review Status", reviewId, `Changed status to ${updates.status}`, req.user.ip);
+  }
+
+  const prevStatus = targetReview.status;
+  reviews[index] = {
+    ...targetReview,
+    ...updates,
+    updatedAt: new Date().toISOString()
+  };
+
+  const updatedReview = reviews[index];
+
+  // Send Notification if admin approved/rejected
+  if (updates.status && updates.status !== prevStatus) {
+    if (updates.status === "approved") {
+      createNotification(
+        updatedReview.userId,
+        "تمت الموافقة على تقييمك ✨",
+        `تمت الموافقة على تقييمك لمنتج "${updatedReview.productName || 'المنتج'}" بنجاح وظهر الآن للمستخدمين.`,
+        "review_approved",
+        updatedReview.id
+      );
+    } else if (updates.status === "rejected") {
+      createNotification(
+        updatedReview.userId,
+        "تحديث بخصوص تقييمك ℹ️",
+        `تعذر قبول تقييمك لمنتج "${updatedReview.productName || 'المنتج'}". يمكنك تعديله وفقًا لإرشادات مجتمع VERO.`,
+        "review_rejected",
+        updatedReview.id
+      );
+    }
+  }
+
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      await supabase.from("reviews").update({
+        rating: updatedReview.rating,
+        title: updatedReview.title,
+        review: updatedReview.review,
+        recommend: updatedReview.recommend,
+        is_anonymous: updatedReview.isAnonymous,
+        status: updatedReview.status,
+        video_url: updatedReview.videoUrl
+      }).eq("id", reviewId);
+
+      if (updates.images) {
+        await supabase.from("review_images").delete().eq("review_id", reviewId);
+        if (updates.images.length > 0) {
+          const imgRows = updates.images.map((img: string) => ({
+            review_id: reviewId,
+            image_url: img
+          }));
+          await supabase.from("review_images").insert(imgRows);
+        }
+      }
+    } catch (err) {
+      console.error("Supabase update review error:", err);
+    }
+  }
+
+  saveReviewsToDisk(reviews);
+  broadcastUpdate();
+  res.json(updatedReview);
+});
+
+// DELETE Review
+app.delete("/api/reviews/:id", requireAuth, async (req: any, res: any) => {
+  const reviewId = req.params.id;
+
+  const reviews = getReviewsFromDisk();
+  const targetReview = reviews.find((r: any) => r.id === reviewId);
+
+  if (targetReview) {
+    if (req.user.role !== "admin" && targetReview.userId !== req.user.userId && targetReview.userEmail?.toLowerCase() !== req.user.email.toLowerCase()) {
+      return res.status(403).json({ error: "Forbidden: You are only allowed to delete your own review." });
+    }
+    if (req.user.role === "admin") {
+      logAuditEvent(req.user.userId, req.user.email, "Delete Review", reviewId, "Deleted review as admin", req.user.ip);
+    }
+  }
+
+  const filtered = reviews.filter((r: any) => r.id !== reviewId);
+  saveReviewsToDisk(filtered);
+
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      await supabase.from("review_images").delete().eq("review_id", reviewId);
+      await supabase.from("review_votes").delete().eq("review_id", reviewId);
+      await supabase.from("review_reports").delete().eq("review_id", reviewId);
+      await supabase.from("review_replies").delete().eq("review_id", reviewId);
+      await supabase.from("reviews").delete().eq("id", reviewId);
+    } catch (err) {
+      console.error("Supabase delete review error:", err);
+    }
+  }
+
+  broadcastUpdate();
+  res.json({ success: true });
+});
+
+// POST Vote Helpful
+app.post("/api/reviews/:id/helpful", async (req, res) => {
+  const reviewId = req.params.id;
+  const { userId } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ error: "userId is required" });
+  }
+
+  const reviews = getReviewsFromDisk();
+  const index = reviews.findIndex((r: any) => r.id === reviewId);
+  if (index === -1) {
+    return res.status(404).json({ error: "Review not found" });
+  }
+
+  const rev = reviews[index];
+  rev.votedUserIds = rev.votedUserIds || [];
+
+  const alreadyVoted = rev.votedUserIds.includes(userId);
+  if (alreadyVoted) {
+    // Remove vote (toggle)
+    rev.votedUserIds = rev.votedUserIds.filter((id: string) => id !== userId);
+    rev.helpfulCount = Math.max(0, (rev.helpfulCount || 1) - 1);
+  } else {
+    // Add vote
+    rev.votedUserIds.push(userId);
+    rev.helpfulCount = (rev.helpfulCount || 0) + 1;
+  }
+
+  saveReviewsToDisk(reviews);
+
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      if (alreadyVoted) {
+        await supabase.from("review_votes").delete().eq("review_id", reviewId).eq("user_id", userId);
+      } else {
+        await supabase.from("review_votes").insert([{ review_id: reviewId, user_id: userId }]);
+      }
+      await supabase.from("reviews").update({ helpful_count: rev.helpfulCount }).eq("id", reviewId);
+    } catch (err) {
+      console.error("Supabase vote review error:", err);
+    }
+  }
+
+  broadcastUpdate();
+  res.json(rev);
+});
+
+// POST Report Review
+app.post("/api/reviews/:id/report", async (req, res) => {
+  const reviewId = req.params.id;
+  const { userId, userName, reason, details } = req.body;
+
+  const reviews = getReviewsFromDisk();
+  const index = reviews.findIndex((r: any) => r.id === reviewId);
+  if (index === -1) {
+    return res.status(404).json({ error: "Review not found" });
+  }
+
+  const rev = reviews[index];
+  rev.reports = rev.reports || [];
+
+  const reportItem = {
+    id: `rep-${Date.now()}`,
+    reviewId,
+    userId: userId || "anon",
+    userName: userName || "Customer",
+    reason: reason || "Other",
+    details: details || "",
+    createdAt: new Date().toISOString()
+  };
+
+  rev.reports.push(reportItem);
+  saveReviewsToDisk(reviews);
+
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      await supabase.from("review_reports").insert([{
+        review_id: reviewId,
+        user_id: userId || "anon",
+        user_name: userName || "Customer",
+        reason: reason || "Other",
+        details: details || ""
+      }]);
+    } catch (err) {
+      console.error("Supabase report review error:", err);
+    }
+  }
+
+  broadcastUpdate();
+  res.json({ success: true, report: reportItem });
+});
+
+// POST Admin Reply to Review
+app.post("/api/reviews/:id/reply", async (req, res) => {
+  const reviewId = req.params.id;
+  const { adminName, reply } = req.body;
+
+  const reviews = getReviewsFromDisk();
+  const index = reviews.findIndex((r: any) => r.id === reviewId);
+  if (index === -1) {
+    return res.status(404).json({ error: "Review not found" });
+  }
+
+  const rev = reviews[index];
+  const replyObj = {
+    id: `rep-${Date.now()}`,
+    reviewId,
+    adminName: adminName || "فريق إدارة VERO",
+    reply,
+    createdAt: new Date().toISOString()
+  };
+
+  rev.reply = replyObj;
+  saveReviewsToDisk(reviews);
+
+  // Send Notification to customer
+  createNotification(
+    rev.userId,
+    "رد جديد من إدارة VERO 💬",
+    `قامت إدارة VERO بالرد على تقييمك لمنتج "${rev.productName || 'المنتج'}": "${reply.length > 50 ? reply.substring(0, 50) + '...' : reply}"`,
+    "admin_reply",
+    rev.id
+  );
+
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      await supabase.from("review_replies").upsert([{
+        review_id: reviewId,
+        admin_name: replyObj.adminName,
+        reply: replyObj.reply
+      }], { onConflict: "review_id" });
+    } catch (err) {
+      console.error("Supabase reply review error:", err);
+    }
+  }
+
+  broadcastUpdate();
+  res.json(rev);
+});
+
+// GET Customer Notifications
+app.get("/api/notifications", (req, res) => {
+  const userEmail = (req.query.userEmail as string) || (req.query.userId as string);
+  const notifications = getNotificationsFromDisk();
+  if (userEmail) {
+    const target = userEmail.toLowerCase();
+    const userNotifs = notifications.filter((n: any) =>
+      (n.userId && n.userId.toLowerCase() === target) ||
+      (n.userEmail && n.userEmail.toLowerCase() === target)
+    );
+    return res.json(userNotifs);
+  }
+  res.json(notifications);
+});
+
+app.get("/api/notifications/:userId", (req, res) => {
+  const { userId } = req.params;
+  const target = userId.toLowerCase();
+  const notifications = getNotificationsFromDisk();
+  const userNotifs = notifications.filter((n: any) =>
+    (n.userId && n.userId.toLowerCase() === target) ||
+    (n.userEmail && n.userEmail.toLowerCase() === target)
+  );
+  res.json(userNotifs);
+});
+
+// PUT Mark Notification as Read
+app.put("/api/notifications/:id/read", (req, res) => {
+  const { id } = req.params;
+  const notifications = getNotificationsFromDisk();
+  const index = notifications.findIndex((n: any) => n.id === id);
+  if (index !== -1) {
+    notifications[index].read = true;
+    saveNotificationsToDisk(notifications);
+    broadcastUpdate();
+    return res.json(notifications[index]);
+  }
+  res.status(404).json({ error: "Notification not found" });
 });
 
 // Vite or Static Assets handling

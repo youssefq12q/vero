@@ -1,5 +1,5 @@
 import React from "react";
-import { Heart, Search, Eye } from "lucide-react";
+import { Heart, Search, Eye, Star } from "lucide-react";
 import { Product } from "../types";
 import { motion } from "motion/react";
 
@@ -10,6 +10,8 @@ interface ProductCardProps {
   onQuickViewClick: (product: Product, e: React.MouseEvent) => void;
   isFavorited: boolean;
   toggleFavorite: (product: Product, e?: React.MouseEvent) => void;
+  avgRating?: number;
+  reviewCount?: number;
 }
 
 export default function ProductCard({
@@ -18,6 +20,8 @@ export default function ProductCard({
   onQuickViewClick,
   isFavorited,
   toggleFavorite,
+  avgRating,
+  reviewCount,
 }: ProductCardProps) {
   return (
     <motion.div
@@ -102,9 +106,39 @@ export default function ProductCard({
             </span>
           )}
         </h3>
-        <p className="font-sans text-xs font-semibold tracking-widest text-brand-gold">
+        <p className="font-sans text-xs font-semibold tracking-widest text-brand-gold mb-1">
           EGP {product.price.toLocaleString()}
         </p>
+
+        {/* Rating Stars & Total Reviews */}
+        {reviewCount !== undefined && reviewCount > 0 ? (
+          <div className="flex items-center gap-1 mt-0.5">
+            <div className="flex items-center gap-0.5">
+              {[1, 2, 3, 4, 5].map((s) => (
+                <Star
+                  key={s}
+                  className={`w-3 h-3 ${
+                    s <= Math.round(avgRating || 5)
+                      ? "fill-[#c5a880] text-[#c5a880]"
+                      : "text-gray-300"
+                  }`}
+                />
+              ))}
+            </div>
+            <span className="text-[10px] font-mono text-[#8c827a] font-medium mr-0.5">
+              {avgRating?.toFixed(1) || "5.0"} ({reviewCount})
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1 mt-0.5 opacity-80">
+            <div className="flex items-center gap-0.5">
+              {[1, 2, 3, 4, 5].map((s) => (
+                <Star key={s} className="w-3 h-3 fill-[#c5a880] text-[#c5a880]" />
+              ))}
+            </div>
+            <span className="text-[10px] font-mono text-[#8c827a]">جديد</span>
+          </div>
+        )}
       </div>
     </motion.div>
   );

@@ -1,26 +1,19 @@
 import { createClient as createBaseClient } from "../../utils/supabase/client";
-import {
-  Product,
-  CartItem,
-  Order,
-  UserProfile,
-  Review,
-  getTierFromSpent,
-} from "../types";
+import { Product, CartItem, Order, UserProfile, Review, getTierFromSpent } from "../types";
 
 // Detect if Supabase is fully configured with actual keys
 export const isSupabaseConfigured = (): boolean => {
   const urlRaw = (import.meta as any).env?.VITE_SUPABASE_URL || "";
   const keyRaw = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || "";
-
+  
   const url = urlRaw.replace(/^['"]|['"]$/g, "").trim();
   const key = keyRaw.replace(/^['"]|['"]$/g, "").trim();
-
+  
   return !!(
-    url &&
+    url && 
     url.startsWith("https://") &&
-    url !== "https://your-project.supabase.co" &&
-    key &&
+    url !== "https://your-project.supabase.co" && 
+    key && 
     key !== "your-anon-key" &&
     key !== "1"
   );
@@ -49,7 +42,7 @@ export function mapDbProductToLocal(dbProduct: any): Product {
     sizeOptions: dbProduct.size_options || ["Standard", "Premium"],
     details: dbProduct.details || [],
     craftsmanship: dbProduct.craftsmanship || "",
-    stock: dbProduct.stock === null ? undefined : Number(dbProduct.stock),
+    stock: dbProduct.stock === null ? undefined : Number(dbProduct.stock)
   };
 }
 
@@ -69,7 +62,7 @@ export function mapLocalProductToDb(product: Product): any {
     size_options: product.sizeOptions || ["Standard", "Premium"],
     details: product.details || [],
     craftsmanship: product.craftsmanship || "",
-    stock: product.stock === undefined ? null : product.stock,
+    stock: product.stock === undefined ? null : product.stock
   };
 }
 
@@ -80,16 +73,16 @@ export function mapLocalProductToDb(product: Product): any {
 export const authService = {
   async signUp(email: string, pass: string, name: string) {
     if (!supabase) throw new Error("Supabase is not configured.");
-
+    
     const { data, error } = await supabase.auth.signUp({
       email,
       password: pass,
       options: {
         data: {
           name: name,
-          avatar_url: `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(name)}`,
-        },
-      },
+          avatar_url: `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(name)}`
+        }
+      }
     });
 
     if (error) throw error;
@@ -98,10 +91,10 @@ export const authService = {
 
   async signIn(email: string, pass: string) {
     if (!supabase) throw new Error("Supabase is not configured.");
-
+    
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
-      password: pass,
+      password: pass
     });
 
     if (error) throw error;
@@ -109,7 +102,21 @@ export const authService = {
     // Fetch the public profile associated with this user
     if (data.user) {
       const profile = await this.getProfile(data.user.id);
-      return { session: data.session, user: profile };
+      if (profile) {
+        return { session: data.session, user: profile };
+      }
+      const fallbackUser: UserProfile = {
+        name: data.user.user_metadata?.name || data.user.email?.split("@")[0] || "VERO Collector",
+        email: data.user.email || email,
+        avatar: data.user.user_metadata?.avatar_url || "default",
+        provider: "email",
+        tier: "Bronze",
+        loyaltyPoints: 0,
+        totalSpent: 0,
+        joinedDate: "July 2026",
+        redeemedRewards: []
+      };
+      return { session: data.session, user: fallbackUser };
     }
 
     return { session: data.session, user: null };
@@ -117,12 +124,12 @@ export const authService = {
 
   async signInWithGoogle() {
     if (!supabase) throw new Error("Supabase is not configured.");
-
+    
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: window.location.origin,
-      },
+        redirectTo: window.location.origin
+      }
     });
 
     if (error) throw error;
@@ -137,7 +144,7 @@ export const authService = {
 
   async getProfile(userId: string): Promise<UserProfile | null> {
     if (!supabase) return null;
-
+    
     const { data, error } = await supabase
       .from("users")
       .select("*")
@@ -160,27 +167,22 @@ export const authService = {
       loyaltyPoints: data.loyalty_points,
       totalSpent: Number(data.total_spent),
       joinedDate: data.joined_date,
-      redeemedRewards: data.redeemed_rewards || [],
+      redeemedRewards: data.redeemed_rewards || []
     };
   },
 
-  async updateProfile(
-    userId: string,
-    updates: Partial<UserProfile>,
-  ): Promise<UserProfile | null> {
+  async updateProfile(userId: string, updates: Partial<UserProfile>): Promise<UserProfile | null> {
     if (!supabase) return null;
 
     const dbUpdates: any = {};
     if (updates.name !== undefined) dbUpdates.name = updates.name;
     if (updates.avatar !== undefined) dbUpdates.avatar = updates.avatar;
-    if (updates.loyaltyPoints !== undefined)
-      dbUpdates.loyalty_points = updates.loyaltyPoints;
+    if (updates.loyaltyPoints !== undefined) dbUpdates.loyalty_points = updates.loyaltyPoints;
     if (updates.totalSpent !== undefined) {
       dbUpdates.total_spent = updates.totalSpent;
       dbUpdates.tier = getTierFromSpent(updates.totalSpent);
     }
-    if (updates.redeemedRewards !== undefined)
-      dbUpdates.redeemed_rewards = updates.redeemedRewards;
+    if (updates.redeemedRewards !== undefined) dbUpdates.redeemed_rewards = updates.redeemedRewards;
 
     const { data, error } = await supabase
       .from("users")
@@ -191,7 +193,7 @@ export const authService = {
 
     if (error) throw error;
     return this.getProfile(userId);
-  },
+  }
 };
 
 // ==========================================
@@ -227,10 +229,13 @@ export const categoryService = {
 
   async deleteCategory(id: string) {
     if (!supabase) return;
-    const { error } = await supabase.from("categories").delete().eq("id", id);
+    const { error } = await supabase
+      .from("categories")
+      .delete()
+      .eq("id", id);
 
     if (error) throw error;
-  },
+  }
 };
 
 // ==========================================
@@ -240,7 +245,7 @@ export const categoryService = {
 export const productService = {
   async getProducts(): Promise<Product[]> {
     if (!supabase) return [];
-
+    
     // Fetch products
     const { data: productsData, error: productsError } = await supabase
       .from("products")
@@ -264,7 +269,7 @@ export const productService = {
           imagesByProductId[img.product_id] = [];
         }
         imagesByProductId[img.product_id].push(img.image_url);
-      });
+      } );
     }
 
     return (productsData || []).map((p: any) => {
@@ -290,9 +295,9 @@ export const productService = {
 
     // Insert secondary images if any
     if (product.secondaryImages && product.secondaryImages.length > 0) {
-      const imageRows = product.secondaryImages.map((img) => ({
+      const imageRows = product.secondaryImages.map(img => ({
         product_id: product.id,
-        image_url: img,
+        image_url: img
       }));
       await supabase.from("product_images").insert(imageRows);
     }
@@ -316,9 +321,9 @@ export const productService = {
     // Refresh secondary images by deleting and recreating
     await supabase.from("product_images").delete().eq("product_id", id);
     if (product.secondaryImages && product.secondaryImages.length > 0) {
-      const imageRows = product.secondaryImages.map((img) => ({
+      const imageRows = product.secondaryImages.map(img => ({
         product_id: id,
-        image_url: img,
+        image_url: img
       }));
       await supabase.from("product_images").insert(imageRows);
     }
@@ -328,30 +333,33 @@ export const productService = {
 
   async deleteProduct(id: string): Promise<void> {
     if (!supabase) return;
-    const { error } = await supabase.from("products").delete().eq("id", id);
+    const { error } = await supabase
+      .from("products")
+      .delete()
+      .eq("id", id);
 
     if (error) throw error;
   },
 
   async uploadProductImage(file: File): Promise<string> {
     if (!supabase) throw new Error("Supabase is not configured.");
-
-    const fileExt = file.name.split(".").pop();
+    
+    const fileExt = file.name.split('.').pop();
     const fileName = `${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
     const filePath = `products/${fileName}`;
 
     const { error: uploadError } = await supabase.storage
-      .from("product-assets")
+      .from('product-assets')
       .upload(filePath, file);
 
     if (uploadError) throw uploadError;
 
     const { data } = supabase.storage
-      .from("product-assets")
+      .from('product-assets')
       .getPublicUrl(filePath);
 
     return data.publicUrl;
-  },
+  }
 };
 
 // ==========================================
@@ -364,16 +372,14 @@ export const cartService = {
 
     const { data, error } = await supabase
       .from("cart")
-      .select(
-        `
+      .select(`
         id,
         quantity,
         selected_material,
         selected_size,
         product_id,
         products (*)
-      `,
-      )
+      `)
       .eq("user_id", userId);
 
     if (error) {
@@ -386,7 +392,7 @@ export const cartService = {
       quantity: item.quantity,
       selectedMaterial: item.selected_material,
       selectedSize: item.selected_size,
-      product: mapDbProductToLocal(item.products),
+      product: mapDbProductToLocal(item.products)
     }));
   },
 
@@ -399,18 +405,18 @@ export const cartService = {
     if (items.length === 0) return;
 
     // Batch insert new cart rows
-    const cartRows = items.map((item) => ({
+    const cartRows = items.map(item => ({
       id: item.id,
       user_id: userId,
       product_id: item.product.id,
       quantity: item.quantity,
       selected_material: item.selectedMaterial,
-      selected_size: item.selectedSize,
+      selected_size: item.selectedSize
     }));
 
     const { error } = await supabase.from("cart").insert(cartRows);
     if (error) console.error("Error syncing cart to Supabase:", error);
-  },
+  }
 };
 
 export const wishlistService = {
@@ -448,7 +454,7 @@ export const wishlistService = {
       .eq("product_id", productId);
 
     if (error) console.error("Error removing from wishlist:", error);
-  },
+  }
 };
 
 // ==========================================
@@ -469,9 +475,9 @@ export const orderService = {
       return [];
     }
 
-    const { data: dbItems, error: itemsError } = await supabase.from(
-      "order_items",
-    ).select(`
+    const { data: dbItems, error: itemsError } = await supabase
+      .from("order_items")
+      .select(`
         order_id,
         quantity,
         selected_material,
@@ -492,12 +498,12 @@ export const orderService = {
       if (!itemsByOrderId[item.order_id]) {
         itemsByOrderId[item.order_id] = [];
       }
-
+      
       const prodData = item.products || {
         name: "Archived Product",
         price: item.price,
         image: "images/placeholder.jpg",
-        category_name: "Catalog",
+        category_name: "Catalog"
       };
 
       itemsByOrderId[item.order_id].push({
@@ -506,11 +512,11 @@ export const orderService = {
           name: prodData.name,
           price: Number(item.price),
           image: prodData.image,
-          categoryName: prodData.category_name,
+          categoryName: prodData.category_name
         },
         quantity: item.quantity,
         selectedMaterial: item.selected_material,
-        selectedSize: item.selected_size,
+        selectedSize: item.selected_size
       });
     });
 
@@ -527,7 +533,7 @@ export const orderService = {
       shippingCity: o.shipping_city,
       shippingZip: o.shipping_zip || "",
       shippingPhone: o.shipping_phone || "",
-      items: itemsByOrderId[o.id] || [],
+      items: itemsByOrderId[o.id] || []
     }));
   },
 
@@ -535,8 +541,9 @@ export const orderService = {
     if (!supabase) return order;
 
     // 1. Insert order record
-    const { error: orderError } = await supabase.from("orders").insert([
-      {
+    const { error: orderError } = await supabase
+      .from("orders")
+      .insert([{
         id: order.id,
         order_number: order.orderNumber,
         user_id: userId || null,
@@ -548,20 +555,19 @@ export const orderService = {
         shipping_phone: order.shippingPhone || null,
         total: order.total,
         status: order.status,
-        date: order.date,
-      },
-    ]);
+        date: order.date
+      }]);
 
     if (orderError) throw orderError;
 
     // 2. Insert order items
-    const itemRows = order.items.map((item) => ({
+    const itemRows = order.items.map(item => ({
       order_id: order.id,
       product_id: item.product.id,
       quantity: item.quantity,
       selected_material: item.selectedMaterial,
       selected_size: item.selectedSize,
-      price: item.product.price,
+      price: item.product.price
     }));
 
     const { error: itemsError } = await supabase
@@ -572,15 +578,14 @@ export const orderService = {
 
     // 3. Log loyalty points reward if registered user
     if (userId) {
-      const pointsEarned = Math.floor(order.total / 100); // 1 point per 100 EGP
+      // Calculate reward points based on order total: <500 EGP => 25 PTS, <=700 EGP => 50 PTS, >700 EGP => 100 PTS
+      const pointsEarned = order.total < 500 ? 25 : order.total <= 700 ? 50 : 100;
       if (pointsEarned > 0) {
-        await supabase.from("loyalty_points").insert([
-          {
-            user_id: userId,
-            points: pointsEarned,
-            description: `Earned from checkout order #${order.orderNumber}`,
-          },
-        ]);
+        await supabase.from("loyalty_points").insert([{
+          user_id: userId,
+          points: pointsEarned,
+          description: `Earned from checkout order #${order.orderNumber}`
+        }]);
 
         // Increment user's totalSpent and loyaltyPoints
         const profile = await authService.getProfile(userId);
@@ -589,7 +594,7 @@ export const orderService = {
           const nextPoints = (profile.loyaltyPoints || 0) + pointsEarned;
           await authService.updateProfile(userId, {
             totalSpent: nextSpent,
-            loyaltyPoints: nextPoints,
+            loyaltyPoints: nextPoints
           });
         }
       }
@@ -606,7 +611,7 @@ export const orderService = {
       .eq("id", id);
 
     if (error) throw error;
-  },
+  }
 };
 
 // ==========================================
@@ -629,36 +634,54 @@ export const reviewService = {
 
     return (data || []).map((r: any) => ({
       id: r.id,
-      author: r.author,
-      rating: r.rating,
-      date: r.date,
-      comment: r.comment,
+      productId: r.product_id || productId,
+      productName: r.product_name || "",
+      productImage: r.product_image || "",
+      orderId: r.order_id || "",
+      userId: r.user_id || "",
+      userName: r.user_name || r.author || "Anonymity",
+      userEmail: r.user_email || "",
+      rating: r.rating || 5,
+      title: r.title || "Product Review",
+      review: r.review || r.comment || "",
+      verifiedPurchase: r.verified_purchase ?? true,
+      recommend: r.recommend ?? true,
+      isAnonymous: r.is_anonymous ?? false,
+      status: r.status || "approved",
+      images: r.images || [],
+      videoUrl: r.video_url || "",
+      helpfulCount: r.helpful_count || 0,
+      votedUserIds: r.voted_user_ids || [],
+      reports: r.reports || [],
+      reply: r.reply || undefined,
+      createdAt: r.created_at || new Date().toISOString(),
+      updatedAt: r.updated_at || new Date().toISOString(),
+      author: r.author || r.user_name || "",
+      date: r.date || r.created_at || "",
+      comment: r.comment || r.review || ""
     }));
   },
 
-  async createReview(
-    productId: string,
-    review: Omit<Review, "id">,
-  ): Promise<Review> {
+  async createReview(productId: string, review: Omit<Review, "id">): Promise<Review> {
     const id = crypto.randomUUID();
     const newReview = { ...review, id };
 
     if (!supabase) return newReview as Review;
 
-    const { error } = await supabase.from("reviews").insert([
-      {
+    const { error } = await supabase
+      .from("reviews")
+      .insert([{
         id,
         product_id: productId,
         author: review.author,
         rating: review.rating,
         comment: review.comment,
-        date: review.date,
-      },
-    ]);
+        date: review.date
+      }]);
 
     if (error) throw error;
     return newReview as Review;
-  },
+  }
 };
 
 // ==========================================
@@ -668,7 +691,9 @@ export const reviewService = {
 export const couponService = {
   async getCoupons() {
     if (!supabase) return [];
-    const { data, error } = await supabase.from("coupons").select("*");
+    const { data, error } = await supabase
+      .from("coupons")
+      .select("*");
 
     if (error) {
       console.error("Error fetching coupons:", error);
@@ -691,8 +716,11 @@ export const couponService = {
 
   async deleteCoupon(code: string) {
     if (!supabase) return;
-    const { error } = await supabase.from("coupons").delete().eq("code", code);
+    const { error } = await supabase
+      .from("coupons")
+      .delete()
+      .eq("code", code);
 
     if (error) throw error;
-  },
+  }
 };

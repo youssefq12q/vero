@@ -3,7 +3,7 @@
 @theme {
   --font-sans: "Poppins", sans-serif;
   --font-serif: "Playfair Display", serif;
-
+  
   --color-brand-gold: #6a5c47;
   --color-brand-sand: #e6dfd5;
   --color-brand-linen: #fff8f3;
@@ -19,24 +19,12 @@
   --animate-float-diamonds: float-diamonds 6s infinite ease-in-out;
 
   @keyframes shimmer {
-    0% {
-      transform: translateX(-100%);
-    }
-    50%,
-    100% {
-      transform: translateX(100%);
-    }
+    0% { transform: translateX(-100%); }
+    50%, 100% { transform: translateX(100%); }
   }
   @keyframes float-diamonds {
-    0%,
-    100% {
-      transform: translateY(0px) scale(0.8) rotate(0deg);
-      opacity: 0.3;
-    }
-    50% {
-      transform: translateY(-12px) scale(1.1) rotate(45deg);
-      opacity: 0.8;
-    }
+    0%, 100% { transform: translateY(0px) scale(0.8) rotate(0deg); opacity: 0.3; }
+    50% { transform: translateY(-12px) scale(1.1) rotate(45deg); opacity: 0.8; }
   }
 }
 

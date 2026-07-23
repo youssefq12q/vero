@@ -1,4 +1,4 @@
-import { createExpressClient } from "./server";
+import { createExpressClient } from './server'
 
 /**
  * Express middleware to authenticate requests and refresh Supabase auth sessions.
@@ -6,8 +6,7 @@ import { createExpressClient } from "./server";
  */
 export async function supabaseExpressMiddleware(req: any, res: any, next: any) {
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const supabaseAnonKey =
-    process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseAnonKey) {
     // Supabase variables are not set yet; proceed without throwing an error
@@ -16,20 +15,18 @@ export async function supabaseExpressMiddleware(req: any, res: any, next: any) {
 
   try {
     const supabase = createExpressClient(req, res);
-
+    
     // getUser() forces a server-side token validation and automatically
     // refreshes the cookie session using @supabase/ssr setAll helper
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
+    const { data: { user } } = await supabase.auth.getUser();
+    
     if (user) {
       req.user = user;
     }
   } catch (err) {
     console.error("Supabase auth middleware error:", err);
   }
-
+  
   next();
 }
 

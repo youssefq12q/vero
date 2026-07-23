@@ -147,7 +147,7 @@ CREATE INDEX IF NOT EXISTS idx_loyalty_points_user ON public.loyalty_points(user
 CREATE INDEX IF NOT EXISTS idx_reviews_product ON public.reviews(product_id);
 
 -- ==========================================
--- ROW LEVEL SECURITY (RLS) POLICIES
+-- ROW LEVEL SECURITY (RLS) POLICIES (IDEMPOTENT)
 -- ==========================================
 -- Enable RLS on all tables
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
@@ -163,59 +163,103 @@ ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.coupons ENABLE ROW LEVEL SECURITY;
 
 -- Anonymous and authenticated permissive policies for effortless client operations
+DROP POLICY IF EXISTS "Allow public select categories" ON public.categories;
 CREATE POLICY "Allow public select categories" ON public.categories FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Allow public insert categories" ON public.categories;
 CREATE POLICY "Allow public insert categories" ON public.categories FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public update categories" ON public.categories;
 CREATE POLICY "Allow public update categories" ON public.categories FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Allow public delete categories" ON public.categories;
 CREATE POLICY "Allow public delete categories" ON public.categories FOR DELETE USING (true);
 
+DROP POLICY IF EXISTS "Allow public select products" ON public.products;
 CREATE POLICY "Allow public select products" ON public.products FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Allow public insert products" ON public.products;
 CREATE POLICY "Allow public insert products" ON public.products FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public update products" ON public.products;
 CREATE POLICY "Allow public update products" ON public.products FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Allow public delete products" ON public.products;
 CREATE POLICY "Allow public delete products" ON public.products FOR DELETE USING (true);
 
+DROP POLICY IF EXISTS "Allow public select product_images" ON public.product_images;
 CREATE POLICY "Allow public select product_images" ON public.product_images FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Allow public insert product_images" ON public.product_images;
 CREATE POLICY "Allow public insert product_images" ON public.product_images FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public update product_images" ON public.product_images;
 CREATE POLICY "Allow public update product_images" ON public.product_images FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Allow public delete product_images" ON public.product_images;
 CREATE POLICY "Allow public delete product_images" ON public.product_images FOR DELETE USING (true);
 
+DROP POLICY IF EXISTS "Allow public select users" ON public.users;
 CREATE POLICY "Allow public select users" ON public.users FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Allow public insert users" ON public.users;
 CREATE POLICY "Allow public insert users" ON public.users FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public update users" ON public.users;
 CREATE POLICY "Allow public update users" ON public.users FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Allow public delete users" ON public.users;
 CREATE POLICY "Allow public delete users" ON public.users FOR DELETE USING (true);
 
+DROP POLICY IF EXISTS "Allow public select cart" ON public.cart;
 CREATE POLICY "Allow public select cart" ON public.cart FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Allow public insert cart" ON public.cart;
 CREATE POLICY "Allow public insert cart" ON public.cart FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public update cart" ON public.cart;
 CREATE POLICY "Allow public update cart" ON public.cart FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Allow public delete cart" ON public.cart;
 CREATE POLICY "Allow public delete cart" ON public.cart FOR DELETE USING (true);
 
+DROP POLICY IF EXISTS "Allow public select wishlist" ON public.wishlist;
 CREATE POLICY "Allow public select wishlist" ON public.wishlist FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Allow public insert wishlist" ON public.wishlist;
 CREATE POLICY "Allow public insert wishlist" ON public.wishlist FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public update wishlist" ON public.wishlist;
 CREATE POLICY "Allow public update wishlist" ON public.wishlist FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Allow public delete wishlist" ON public.wishlist;
 CREATE POLICY "Allow public delete wishlist" ON public.wishlist FOR DELETE USING (true);
 
+DROP POLICY IF EXISTS "Allow public select orders" ON public.orders;
 CREATE POLICY "Allow public select orders" ON public.orders FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Allow public insert orders" ON public.orders;
 CREATE POLICY "Allow public insert orders" ON public.orders FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public update orders" ON public.orders;
 CREATE POLICY "Allow public update orders" ON public.orders FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Allow public delete orders" ON public.orders;
 CREATE POLICY "Allow public delete orders" ON public.orders FOR DELETE USING (true);
 
+DROP POLICY IF EXISTS "Allow public select order_items" ON public.order_items;
 CREATE POLICY "Allow public select order_items" ON public.order_items FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Allow public insert order_items" ON public.order_items;
 CREATE POLICY "Allow public insert order_items" ON public.order_items FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public update order_items" ON public.order_items;
 CREATE POLICY "Allow public update order_items" ON public.order_items FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Allow public delete order_items" ON public.order_items;
 CREATE POLICY "Allow public delete order_items" ON public.order_items FOR DELETE USING (true);
 
+DROP POLICY IF EXISTS "Allow public select loyalty_points" ON public.loyalty_points;
 CREATE POLICY "Allow public select loyalty_points" ON public.loyalty_points FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Allow public insert loyalty_points" ON public.loyalty_points;
 CREATE POLICY "Allow public insert loyalty_points" ON public.loyalty_points FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public update loyalty_points" ON public.loyalty_points;
 CREATE POLICY "Allow public update loyalty_points" ON public.loyalty_points FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Allow public delete loyalty_points" ON public.loyalty_points;
 CREATE POLICY "Allow public delete loyalty_points" ON public.loyalty_points FOR DELETE USING (true);
 
+DROP POLICY IF EXISTS "Allow public select reviews" ON public.reviews;
 CREATE POLICY "Allow public select reviews" ON public.reviews FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Allow public insert reviews" ON public.reviews;
 CREATE POLICY "Allow public insert reviews" ON public.reviews FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public update reviews" ON public.reviews;
 CREATE POLICY "Allow public update reviews" ON public.reviews FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Allow public delete reviews" ON public.reviews;
 CREATE POLICY "Allow public delete reviews" ON public.reviews FOR DELETE USING (true);
 
+DROP POLICY IF EXISTS "Allow public select coupons" ON public.coupons;
 CREATE POLICY "Allow public select coupons" ON public.coupons FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Allow public insert coupons" ON public.coupons;
 CREATE POLICY "Allow public insert coupons" ON public.coupons FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow public update coupons" ON public.coupons;
 CREATE POLICY "Allow public update coupons" ON public.coupons FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Allow public delete coupons" ON public.coupons;
 CREATE POLICY "Allow public delete coupons" ON public.coupons FOR DELETE USING (true);
 
 -- ==========================================
@@ -227,9 +271,13 @@ VALUES ('product-assets', 'product-assets', true)
 ON CONFLICT (id) DO NOTHING;
 
 -- Policies for public storage bucket access
+DROP POLICY IF EXISTS "Allow public select storage" ON storage.objects;
 CREATE POLICY "Allow public select storage" ON storage.objects FOR SELECT USING (bucket_id = 'product-assets');
+DROP POLICY IF EXISTS "Allow public insert storage" ON storage.objects;
 CREATE POLICY "Allow public insert storage" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'product-assets');
+DROP POLICY IF EXISTS "Allow public update storage" ON storage.objects;
 CREATE POLICY "Allow public update storage" ON storage.objects FOR UPDATE USING (bucket_id = 'product-assets');
+DROP POLICY IF EXISTS "Allow public delete storage" ON storage.objects;
 CREATE POLICY "Allow public delete storage" ON storage.objects FOR DELETE USING (bucket_id = 'product-assets');
 
 -- ==========================================

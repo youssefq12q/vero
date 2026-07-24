@@ -139,4 +139,42 @@ router.put("/:id", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
+// DELETE /api/users/clear-all (Admin only - Deletes all user accounts)
+router.delete("/clear-all", requireAdmin, async (req: Request, res: Response) => {
+  const supabase = getSupabaseAdmin();
+  if (supabase) {
+    try {
+      await supabase.from("users").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    } catch (err) {
+      console.error("Supabase clear all users error:", err);
+    }
+  }
+
+  if (req.user) {
+    await logAuditEvent(req.user.userId, req.user.email, "Clear All Accounts", "User Accounts", "Deleted all user accounts");
+  }
+
+  return res.json({ success: true, message: "All user accounts deleted successfully." });
+});
+
+// DELETE /api/users/:id (Admin only)
+router.delete("/:id", requireAdmin, async (req: Request, res: Response) => {
+  const userId = req.params.id;
+  const supabase = getSupabaseAdmin();
+
+  if (supabase) {
+    try {
+      await supabase.from("users").delete().eq("id", userId);
+    } catch (err) {
+      console.error("Supabase delete user error:", err);
+    }
+  }
+
+  if (req.user) {
+    await logAuditEvent(req.user.userId, req.user.email, "Delete User Account", userId, `Deleted user ID: ${userId}`);
+  }
+
+  return res.json({ success: true });
+});
+
 export default router;

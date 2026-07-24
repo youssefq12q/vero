@@ -33,16 +33,6 @@ export default function MobileNav({ activeTab, setActiveTab, cartCount, user }: 
         <span className="text-[9px] uppercase tracking-wider">Shop</span>
       </button>
 
-      <button
-        onClick={() => setActiveTab("tracking")}
-        className={`flex flex-col items-center gap-0.5 transition-colors duration-300 ${
-          activeTab === "tracking" ? "text-brand-gold font-medium scale-105" : "text-brand-outline/60"
-        }`}
-      >
-        <Truck className="w-4 h-4 stroke-[1.5]" />
-        <span className="text-[9px] uppercase tracking-wider">Track</span>
-      </button>
-
       {isPlatinumOrDiamond && (
         <button
           onClick={() => setActiveTab("platinum-lounge")}

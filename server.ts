@@ -990,8 +990,10 @@ const USERS_FILE = path.join(process.cwd(), "users-db.json");
 
 function getUsersFromDisk() {
   let users: any[] = [];
+  let fileExists = false;
   try {
     if (fs.existsSync(USERS_FILE)) {
+      fileExists = true;
       const content = fs.readFileSync(USERS_FILE, "utf-8");
       users = JSON.parse(content);
     }
@@ -999,39 +1001,9 @@ function getUsersFromDisk() {
     console.error("Error reading users database:", err);
   }
 
-  if (!users || users.length === 0) {
-    users = [
-      {
-        id: "u-1",
-        email: "vero2026@vero.com",
-        name: "VERO Executive Admin",
-        role: "admin",
-        tier: "Diamond",
-        loyaltyPoints: 12500,
-        totalSpent: 45000,
-        joinedDate: "2025-01-01"
-      },
-      {
-        id: "u-2",
-        email: "youssef.ahmed@example.com",
-        name: "يوسف أحمد",
-        role: "customer",
-        tier: "Gold",
-        loyaltyPoints: 1850,
-        totalSpent: 8500,
-        joinedDate: "2025-03-12"
-      },
-      {
-        id: "u-3",
-        email: "sarah.mansour@example.com",
-        name: "سارة منصور",
-        role: "customer",
-        tier: "Silver",
-        loyaltyPoints: 620,
-        totalSpent: 2400,
-        joinedDate: "2025-05-18"
-      }
-    ];
+  if (!fileExists) {
+    users = [];
+    saveUsersToDisk(users);
   }
 
   let dirty = false;
@@ -1107,6 +1079,24 @@ app.put("/api/users/:id", requireAuth, (req: any, res: any) => {
   saveUsersToDisk(updatedUsers);
   broadcastUpdate();
   const safeUsers = updatedUsers.map(({ passwordHash, salt, ...safeUser }) => safeUser);
+  res.json(safeUsers);
+});
+
+app.delete("/api/users/clear-all", requireAdmin, (req: any, res: any) => {
+  saveUsersToDisk([]);
+  broadcastUpdate();
+  logAuditEvent(req.user.userId, req.user.email, "Clear All Accounts", "User Accounts", "Deleted all user accounts", req.user.ip);
+  res.json([]);
+});
+
+app.delete("/api/users/:id", requireAdmin, (req: any, res: any) => {
+  const userId = req.params.id;
+  const users = getUsersFromDisk();
+  const remaining = users.filter((u: any) => u.id !== userId && u.email !== userId);
+  saveUsersToDisk(remaining);
+  broadcastUpdate();
+  logAuditEvent(req.user.userId, req.user.email, "Delete User Account", userId, `Deleted user ID: ${userId}`, req.user.ip);
+  const safeUsers = remaining.map(({ passwordHash, salt, ...safeUser }) => safeUser);
   res.json(safeUsers);
 });
 

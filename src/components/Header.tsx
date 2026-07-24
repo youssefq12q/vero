@@ -80,15 +80,6 @@ export default function Header({
             >
               Shop All
             </button>
-            <button
-              onClick={() => setActiveTab("tracking")}
-              className={`hover:text-brand-gold transition-colors flex items-center gap-1 ${
-                activeTab === "tracking" ? "text-brand-gold font-semibold" : ""
-              }`}
-            >
-              <Truck className="w-3.5 h-3.5 text-brand-gold" />
-              <span>Track Order / تتبع الطلب</span>
-            </button>
 
             {user?.email?.toLowerCase() === "vero2026@vero.com" && (
               <button

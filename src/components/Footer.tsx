@@ -100,11 +100,6 @@ export default function Footer({ setActiveTab }: FooterProps) {
           </h5>
           <ul className="space-y-3 font-sans text-xs font-light text-brand-outline">
             <li>
-              <button onClick={() => setActiveTab("tracking")} className="hover:text-brand-gold transition-colors text-left uppercase font-medium text-brand-gold">
-                🚚 TRACK YOUR ORDER / تتبع الطلب
-              </button>
-            </li>
-            <li>
               <a href="#" onClick={(e) => e.preventDefault()} className="hover:text-brand-gold transition-colors">
                 SHIPPING &amp; RETURNS
               </a>

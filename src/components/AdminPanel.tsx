@@ -162,6 +162,40 @@ export default function AdminPanel({
     }
   };
 
+  const handleDeleteUser = async (userId: string, userEmail: string) => {
+    if (!window.confirm(`هل أنت متأكد من مسح حساب المستخدم (${userEmail})؟`)) return;
+    try {
+      const res = await fetch(`/api/users/${encodeURIComponent(userId)}`, { method: "DELETE" });
+      if (res.ok) {
+        setUsersList((prev) => prev.filter((u) => u.id !== userId && u.email !== userEmail));
+        setNotification({ text: `تم مسح حساب المستخدم (${userEmail}) بنجاح.`, type: "success" });
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setNotification({ text: errData.error || "تعذر مسح حساب المستخدم.", type: "error" });
+      }
+    } catch (err) {
+      console.error("Error deleting user:", err);
+      setNotification({ text: "حدث خطأ أثناء الاتصال بالخادم.", type: "error" });
+    }
+  };
+
+  const handleClearAllUsers = async () => {
+    if (!window.confirm("⚠️ هل أنت متأكد من مسح جميع الحسابات المسجلة في الموقع؟ (سيتم الاحتفاظ بحساب المسؤول الرئيسي)")) return;
+    try {
+      const res = await fetch("/api/users/clear-all", { method: "DELETE" });
+      if (res.ok) {
+        await fetchUsers();
+        setNotification({ text: "تم مسح جميع الحسابات المسجلة للعملاء بنجاح.", type: "success" });
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setNotification({ text: errData.error || "تعذر مسح الحسابات.", type: "error" });
+      }
+    } catch (err) {
+      console.error("Error clearing users:", err);
+      setNotification({ text: "حدث خطأ أثناء الاتصال بالخادم.", type: "error" });
+    }
+  };
+
   // Orders Sub-tab States
   const [orderSearch, setOrderSearch] = React.useState("");
   const [orderStatusFilter, setOrderStatusFilter] = React.useState("all");
@@ -2195,16 +2229,29 @@ export default function AdminPanel({
                   </p>
                 </div>
 
-                {/* Search Bar */}
-                <div className="relative w-full sm:w-64">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-outline/60" />
-                  <input
-                    type="text"
-                    value={userSearch}
-                    onChange={(e) => setUserSearch(e.target.value)}
-                    placeholder="بحث بالمستخدم..."
-                    className="w-full bg-white border border-[#c5a880]/20 rounded-lg pl-9 pr-3 py-2 text-xs text-brand-dark outline-none focus:border-brand-gold"
-                  />
+                {/* Search Bar & Actions */}
+                <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto">
+                  <div className="relative w-full sm:w-64">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-outline/60" />
+                    <input
+                      type="text"
+                      value={userSearch}
+                      onChange={(e) => setUserSearch(e.target.value)}
+                      placeholder="بحث بالمستخدم..."
+                      className="w-full bg-white border border-[#c5a880]/20 rounded-lg pl-9 pr-3 py-2 text-xs text-brand-dark outline-none focus:border-brand-gold"
+                    />
+                  </div>
+                  {usersList.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearAllUsers}
+                      className="w-full sm:w-auto px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 whitespace-nowrap"
+                      title="مسح جميع حسابات العملاء المسجلين"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>مسح جميع الحسابات</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -2275,14 +2322,26 @@ export default function AdminPanel({
                               </td>
 
                               <td className="py-3 px-3 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => handleAddUserPoints(u.id || u.email, 500)}
-                                  className="px-2.5 py-1 bg-[#a68253] hover:bg-brand-dark text-white rounded text-[10px] font-bold transition-all shadow-xs"
-                                  title="إضافة 500 نقطة ولاء لهذا المستخدم"
-                                >
-                                  +500 PTS 🎁
-                                </button>
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddUserPoints(u.id || u.email, 500)}
+                                    className="px-2.5 py-1 bg-[#a68253] hover:bg-brand-dark text-white rounded text-[10px] font-bold transition-all shadow-xs"
+                                    title="إضافة 500 نقطة ولاء لهذا المستخدم"
+                                  >
+                                    +500 PTS 🎁
+                                  </button>
+                                  {u.role !== "admin" && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteUser(u.id || u.email, u.email)}
+                                      className="p-1 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded transition-all"
+                                      title="حذف هذا الحساب"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           );

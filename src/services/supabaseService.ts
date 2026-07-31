@@ -21,41 +21,41 @@ export const supabase = isSupabaseConfigured() ? createBaseClient() : null;
 // ==========================================
 
 export function mapDbProductToLocal(dbProduct: any): Product {
+  const images = Array.isArray(dbProduct.images) ? dbProduct.images : (dbProduct.images ? [dbProduct.images] : []);
+  const mainImage = dbProduct.image || images[0] || "https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=800&q=80";
+  const secImages = dbProduct.secondaryImages || dbProduct.secondary_images || images.slice(1);
+
   return {
     id: dbProduct.id,
     name: dbProduct.name,
-    categoryId: dbProduct.category_id || "rings",
-    categoryName: dbProduct.category_name || "Rings",
+    categoryId: dbProduct.category_id || dbProduct.categoryId || "rings",
+    categoryName: dbProduct.category_name || dbProduct.categoryName || "Rings",
     price: Number(dbProduct.price),
-    image: dbProduct.image,
-    secondaryImages: dbProduct.secondary_images || [],
+    image: mainImage,
+    secondaryImages: secImages,
     description: dbProduct.description || "",
     tagline: dbProduct.tagline || "",
-    isNew: dbProduct.is_new || false,
-    materialOptions: dbProduct.material_options || ["#E5D5BC", "#E5E4E2"],
-    sizeOptions: dbProduct.size_options || ["Standard", "Premium"],
+    isNew: dbProduct.is_new !== false && dbProduct.isNew !== false,
+    materialOptions: dbProduct.materials || dbProduct.material_options || dbProduct.materialOptions || ["#E5D5BC", "#E5E4E2"],
+    sizeOptions: dbProduct.sizes || dbProduct.size_options || dbProduct.sizeOptions || ["Standard", "Premium"],
     details: dbProduct.details || [],
     craftsmanship: dbProduct.craftsmanship || "",
-    stock: dbProduct.stock === null ? undefined : Number(dbProduct.stock)
+    stock: dbProduct.stock === null || dbProduct.stock === undefined ? undefined : Number(dbProduct.stock)
   };
 }
 
 export function mapLocalProductToDb(product: Product): any {
+  const allImages = [product.image, ...(product.secondaryImages || [])].filter(Boolean);
   return {
     id: product.id,
     name: product.name,
-    category_id: product.categoryId,
-    category_name: product.categoryName,
+    category_id: product.categoryId || "rings",
     price: product.price,
-    image: product.image,
-    secondary_images: product.secondaryImages || [],
+    images: allImages,
     description: product.description || "",
-    tagline: product.tagline || "",
-    is_new: product.isNew || false,
-    material_options: product.materialOptions || ["#E5D5BC", "#E5E4E2"],
-    size_options: product.sizeOptions || ["Standard", "Premium"],
-    details: product.details || [],
-    craftsmanship: product.craftsmanship || "",
+    is_new: !!product.isNew,
+    materials: product.materialOptions || ["#E5D5BC", "#E5E4E2"],
+    sizes: product.sizeOptions || ["Standard", "Premium"],
     stock: product.stock === undefined ? null : product.stock
   };
 }

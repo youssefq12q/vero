@@ -29,6 +29,7 @@ import { motion, AnimatePresence } from "motion/react";
 
 import { Product, CartItem, UserProfile, getTierFromSpent, Order, Reward, Promo, Review } from "./types";
 import { CATEGORIES, PRODUCTS, STORIES } from "./data";
+import { safeFetch } from "./utils/apiUtils";
 
 // Subcomponents
 import Header from "./components/Header";
@@ -385,7 +386,7 @@ export default function App() {
 
   const fetchReviews = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/reviews");
+      const res = await safeFetch("/api/reviews");
       if (res.ok) {
         const data = await res.json();
         setAllReviews(data);
@@ -411,7 +412,7 @@ export default function App() {
 
   const fetchOrders = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/orders");
+      const res = await safeFetch("/api/orders");
       if (res.ok) {
         const data = await res.json();
         setOrders(data);
@@ -423,7 +424,7 @@ export default function App() {
 
   const fetchRewards = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/rewards");
+      const res = await safeFetch("/api/rewards");
       if (res.ok) {
         const data = await res.json();
         setRewards(data);
@@ -435,7 +436,7 @@ export default function App() {
 
   const fetchPromos = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/promos");
+      const res = await safeFetch("/api/promos");
       if (res.ok) {
         const data = await res.json();
         setPromos(data);
@@ -447,7 +448,7 @@ export default function App() {
 
   const fetchProducts = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/products");
+      const res = await safeFetch("/api/products");
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {

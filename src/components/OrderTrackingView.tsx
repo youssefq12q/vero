@@ -166,7 +166,10 @@ export default function OrderTrackingView({
   // Address details - ONLY Customer Name, Phone, Full Address (ZIP/Postal Code strictly removed)
   const shippingName = order.shippingName || "عميل VERO";
   const shippingPhone = order.shippingPhone || "";
-  const shippingAddress = order.shippingAddress || "غير محدد";
+  const rawAddr = order.shippingAddress;
+  const shippingAddress = typeof rawAddr === "object" && rawAddr !== null
+    ? ((rawAddr as any).address || (rawAddr as any).fullName || JSON.stringify(rawAddr))
+    : String(rawAddr || "غير محدد");
   const shippingCity = order.shippingCity || "";
 
   // Order Details

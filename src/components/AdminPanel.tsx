@@ -278,11 +278,17 @@ export default function AdminPanel({
     return orders.filter((order) => {
       // 1. Search filter
       const searchLower = orderSearch.toLowerCase();
+      const formatAddrStr = (addr: any) => {
+        if (!addr) return "";
+        if (typeof addr === "string") return addr;
+        if (typeof addr === "object") return addr.address || addr.fullName || addr.city || JSON.stringify(addr);
+        return String(addr);
+      };
       const matchesSearch =
         order.orderNumber?.toLowerCase().includes(searchLower) ||
         order.shippingName?.toLowerCase().includes(searchLower) ||
         order.shippingEmail?.toLowerCase().includes(searchLower) ||
-        order.shippingAddress?.toLowerCase().includes(searchLower) ||
+        formatAddrStr(order.shippingAddress).toLowerCase().includes(searchLower) ||
         order.shippingCity?.toLowerCase().includes(searchLower) ||
         order.shippingPhone?.toLowerCase().includes(searchLower) ||
         order.status?.toLowerCase().includes(searchLower);
@@ -1124,7 +1130,7 @@ export default function AdminPanel({
                           <p><strong className="font-medium">Name:</strong> {selectedOrder.shippingName}</p>
                           <p><strong className="font-medium">Email:</strong> {selectedOrder.shippingEmail}</p>
                           <p><strong className="font-medium">Phone / الهاتف:</strong> {selectedOrder.shippingPhone || "Not Provided / غير متوفر"}</p>
-                          <p><strong className="font-medium">Address:</strong> {selectedOrder.shippingAddress}</p>
+                          <p><strong className="font-medium">Address:</strong> {typeof selectedOrder.shippingAddress === 'object' && selectedOrder.shippingAddress !== null ? ((selectedOrder.shippingAddress as any).address || JSON.stringify(selectedOrder.shippingAddress)) : String(selectedOrder.shippingAddress || "")}</p>
                           <p><strong className="font-medium">City:</strong> {selectedOrder.shippingCity}</p>
                         </div>
                       </div>
@@ -1156,7 +1162,7 @@ export default function AdminPanel({
                         {/* WhatsApp Communication Prompt */}
                         <a
                           href={`https://wa.me/${selectedOrder.shippingPhone ? selectedOrder.shippingPhone.replace(/[^0-9]/g, "") : "201102136064"}?text=${encodeURIComponent(
-                            `مرحباً ${selectedOrder.shippingName}،\nيسعدنا إخطاركم بأن حالة طلبكم رقم #${selectedOrder.orderNumber} لدى Vero Boutique هي الآن: *${selectedOrder.status}*.\n\nتفاصيل الطلب:\nالقيمة الإجمالية: EGP ${selectedOrder.total?.toLocaleString()}\nالعنوان: ${selectedOrder.shippingAddress}، ${selectedOrder.shippingCity}\n\nشكراً لتسوقكم معنا!`
+                            `مرحباً ${selectedOrder.shippingName}،\nيسعدنا إخطاركم بأن حالة طلبكم رقم #${selectedOrder.orderNumber} لدى Vero Boutique هي الآن: *${selectedOrder.status}*.\n\nتفاصيل الطلب:\nالقيمة الإجمالية: EGP ${selectedOrder.total?.toLocaleString()}\nالعنوان: ${typeof selectedOrder.shippingAddress === 'object' && selectedOrder.shippingAddress !== null ? ((selectedOrder.shippingAddress as any).address || JSON.stringify(selectedOrder.shippingAddress)) : String(selectedOrder.shippingAddress || "")}، ${selectedOrder.shippingCity}\n\nشكراً لتسوقكم معنا!`
                           )}`}
                           target="_blank"
                           referrerPolicy="no-referrer"

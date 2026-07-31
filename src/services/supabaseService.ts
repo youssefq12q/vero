@@ -1,22 +1,16 @@
-import { createClient as createBaseClient } from "../../utils/supabase/client";
+import { 
+  createClient as createBaseClient, 
+  isSupabaseConfigured as checkIsSupabaseConfigured,
+  getSupabaseEnv,
+  getSupabaseDiagnostic
+} from "../../utils/supabase/client";
 import { Product, CartItem, Order, UserProfile, Review, getTierFromSpent } from "../types";
+
+export { getSupabaseEnv, getSupabaseDiagnostic };
 
 // Detect if Supabase is fully configured with actual keys
 export const isSupabaseConfigured = (): boolean => {
-  const urlRaw = (import.meta as any).env?.VITE_SUPABASE_URL || "";
-  const keyRaw = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || "";
-  
-  const url = urlRaw.replace(/^['"]|['"]$/g, "").trim();
-  const key = keyRaw.replace(/^['"]|['"]$/g, "").trim();
-  
-  return !!(
-    url && 
-    url.startsWith("https://") &&
-    url !== "https://your-project.supabase.co" && 
-    key && 
-    key !== "your-anon-key" &&
-    key !== "1"
-  );
+  return checkIsSupabaseConfigured();
 };
 
 // Initialize the Supabase client

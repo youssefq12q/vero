@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from "react";
-import { createClient } from "../../utils/supabase/client";
+import { 
+  createClient, 
+  getSupabaseEnv, 
+  isSupabaseConfigured, 
+  getSupabaseDiagnostic 
+} from "../../utils/supabase/client";
 import { 
   Database, 
   ShieldAlert, 
@@ -49,25 +54,9 @@ export default function SupabasePlayground() {
     coupons: { status: "unchecked", count: 0 },
   });
 
-  // Local state for env values (for display/diagnostics)
-  const getEnvValues = () => {
-    const urlRaw = (import.meta as any).env?.VITE_SUPABASE_URL || "";
-    const keyRaw = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || "";
-    return {
-      url: urlRaw.replace(/^['"]|['"]$/g, "").trim(),
-      key: keyRaw.replace(/^['"]|['"]$/g, "").trim()
-    };
-  };
-
-  const envValues = getEnvValues();
-  const isEnvConfigured = !!(
-    envValues.url &&
-    envValues.url.startsWith("https://") &&
-    envValues.url !== "https://your-project.supabase.co" &&
-    envValues.key &&
-    envValues.key !== "your-anon-key" &&
-    envValues.key !== "1"
-  );
+  const envValues = getSupabaseEnv();
+  const isEnvConfigured = isSupabaseConfigured();
+  const diagnostic = getSupabaseDiagnostic();
 
   // Initialize Supabase if variables are set
   const getSupabase = () => {
@@ -435,12 +424,19 @@ export default function SupabasePlayground() {
             <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-200 text-xs leading-relaxed font-mono flex items-start gap-3">
               <ShieldAlert className="w-5 h-5 flex-shrink-0 text-amber-400 mt-0.5" />
               <div>
-                <strong className="text-amber-300 block mb-1">🔑 Demo Mode - Credentials Required</strong>
-                Configure the environment variables inside your AI Studio **Secrets** panel to connect to your live database:
-                <ul className="list-disc ml-5 mt-2 space-y-1 text-gray-300">
-                  <li><code className="text-amber-200 bg-black/30 px-1 py-0.5 rounded">VITE_SUPABASE_URL</code></li>
-                  <li><code className="text-amber-200 bg-black/30 px-1 py-0.5 rounded">VITE_SUPABASE_ANON_KEY</code></li>
-                </ul>
+                <strong className="text-amber-300 block mb-1">🔑 Demo Mode - {diagnostic.reasons[0] || "Credentials Required"}</strong>
+                {diagnostic.missingVars.length > 0 ? (
+                  <>
+                    Missing the following required environment variable(s):
+                    <ul className="list-disc ml-5 mt-2 space-y-1 text-gray-300">
+                      {diagnostic.missingVars.map((v) => (
+                        <li key={v}><code className="text-amber-200 bg-black/30 px-1 py-0.5 rounded">{v}</code></li>
+                      ))}
+                    </ul>
+                  </>
+                ) : (
+                  <p className="mt-1 text-gray-300">Reason: {diagnostic.reasons.join(" ")}</p>
+                )}
                 <p className="mt-2 text-gray-400">Currently showing high-fidelity simulated boutique telemetry.</p>
               </div>
             </div>

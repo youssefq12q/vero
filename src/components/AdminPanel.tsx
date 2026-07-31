@@ -23,6 +23,7 @@ import {
   Upload,
   Package,
   Gift,
+  Award,
   Database,
   Users,
   Star,
@@ -31,6 +32,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { Product, Order, Reward, Promo, Review } from "../types";
 import { CATEGORIES } from "../data";
 import AdminReviewsManager from "./AdminReviewsManager";
+import PriceDisplay from "./PriceDisplay";
 
 interface AdminPanelProps {
   products: Product[];
@@ -92,8 +94,19 @@ export default function AdminPanel({
   // Helper for Session Auth Headers
   const getAuthHeaders = React.useCallback(() => {
     const token = localStorage.getItem("vero_session_token");
+    const savedUserStr = localStorage.getItem("vero_user");
+    let userEmail = "vero2026@vero.com";
+    if (savedUserStr) {
+      try {
+        const parsed = JSON.parse(savedUserStr);
+        if (parsed.email) userEmail = parsed.email;
+      } catch (e) {
+        // ignore
+      }
+    }
     return {
       "Content-Type": "application/json",
+      "X-User-Email": userEmail,
       ...(token ? { "Authorization": `Bearer ${token}`, "X-Session-Token": token } : {})
     };
   }, []);
@@ -127,7 +140,9 @@ export default function AdminPanel({
 
   const fetchUsers = React.useCallback(async () => {
     try {
-      const res = await fetch("/api/users");
+      const res = await fetch("/api/users", {
+        headers: getAuthHeaders()
+      });
       if (res.ok) {
         const data = await res.json();
         setUsersList(data);
@@ -135,7 +150,7 @@ export default function AdminPanel({
     } catch (err) {
       console.error("Error fetching users:", err);
     }
-  }, []);
+  }, [getAuthHeaders]);
 
   React.useEffect(() => {
     fetchUsers();
@@ -148,7 +163,7 @@ export default function AdminPanel({
     try {
       const res = await fetch(`/api/users/${userId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ loyaltyPoints: newPoints }),
       });
       if (res.ok) {
@@ -163,9 +178,11 @@ export default function AdminPanel({
   };
 
   const handleDeleteUser = async (userId: string, userEmail: string) => {
-    if (!window.confirm(`هل أنت متأكد من مسح حساب المستخدم (${userEmail})؟`)) return;
     try {
-      const res = await fetch(`/api/users/${encodeURIComponent(userId)}`, { method: "DELETE" });
+      const res = await fetch(`/api/users/${encodeURIComponent(userId)}`, { 
+        method: "DELETE",
+        headers: getAuthHeaders() 
+      });
       if (res.ok) {
         setUsersList((prev) => prev.filter((u) => u.id !== userId && u.email !== userEmail));
         setNotification({ text: `تم مسح حساب المستخدم (${userEmail}) بنجاح.`, type: "success" });
@@ -180,9 +197,11 @@ export default function AdminPanel({
   };
 
   const handleClearAllUsers = async () => {
-    if (!window.confirm("⚠️ هل أنت متأكد من مسح جميع الحسابات المسجلة في الموقع؟ (سيتم الاحتفاظ بحساب المسؤول الرئيسي)")) return;
     try {
-      const res = await fetch("/api/users/clear-all", { method: "DELETE" });
+      const res = await fetch("/api/users/clear-all", { 
+        method: "DELETE",
+        headers: getAuthHeaders()
+      });
       if (res.ok) {
         await fetchUsers();
         setNotification({ text: "تم مسح جميع الحسابات المسجلة للعملاء بنجاح.", type: "success" });
@@ -207,7 +226,7 @@ export default function AdminPanel({
     try {
       const res = await fetch(`/api/orders/${orderId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ status: newStatus }),
       });
       if (res.ok) {
@@ -235,6 +254,7 @@ export default function AdminPanel({
     try {
       const res = await fetch(`/api/orders/${orderId}`, {
         method: "DELETE",
+        headers: getAuthHeaders()
       });
       if (res.ok) {
         if (setOrders) {
@@ -307,7 +327,10 @@ export default function AdminPanel({
       } catch (e) {
         // ignore
       }
-      fetch("/api/products/clear", { method: "POST" }).catch(console.error);
+      fetch("/api/products/clear", { 
+        method: "POST",
+        headers: getAuthHeaders()
+      }).catch(console.error);
       triggerNotification("تم حذف جميع المنتجات بنجاح / All products have been cleared.", "success");
       setShowClearAllConfirm(false);
     });
@@ -332,6 +355,9 @@ export default function AdminPanel({
   const [name, setName] = React.useState("");
   const [categoryId, setCategoryId] = React.useState("rings");
   const [price, setPrice] = React.useState<number | "">("");
+  const [originalPrice, setOriginalPrice] = React.useState<number | "">("");
+  const [discountPercent, setDiscountPercent] = React.useState<number | "">("");
+  const [pointsEarned, setPointsEarned] = React.useState<number | "">("");
   const [imageUrl, setImageUrl] = React.useState("");
   const [additionalImages, setAdditionalImages] = React.useState<string[]>([]);
   const [tagline, setTagline] = React.useState("");
@@ -342,6 +368,35 @@ export default function AdminPanel({
   const [details, setDetails] = React.useState<string>("W3C-Validated clean markup structures, Fully accessible (WCAG 2.1 AA compliant)");
   const [craftsmanship, setCraftsmanship] = React.useState("");
   const [stock, setStock] = React.useState<number | "">("");
+
+  // Price & Discount auto-calculator handlers
+  const handlePriceChange = (newPriceVal: number | "") => {
+    setPrice(newPriceVal);
+    if (typeof newPriceVal === "number" && typeof originalPrice === "number" && originalPrice > newPriceVal) {
+      setDiscountPercent(Math.round(((originalPrice - newPriceVal) / originalPrice) * 100));
+    }
+    // Auto calculate points (e.g. 1 point for every 10 EGP or ~10% of price) if points not manually set
+    if (typeof newPriceVal === "number" && newPriceVal > 0 && pointsEarned === "") {
+      setPointsEarned(Math.round(newPriceVal * 0.1));
+    }
+  };
+
+  const handleOriginalPriceChange = (newOrigVal: number | "") => {
+    setOriginalPrice(newOrigVal);
+    if (typeof price === "number" && typeof newOrigVal === "number" && newOrigVal > price) {
+      setDiscountPercent(Math.round(((newOrigVal - price) / newOrigVal) * 100));
+    } else if (newOrigVal === "" || (typeof price === "number" && typeof newOrigVal === "number" && newOrigVal <= price)) {
+      setDiscountPercent("");
+    }
+  };
+
+  const handleDiscountPercentChange = (newPctVal: number | "") => {
+    setDiscountPercent(newPctVal);
+    if (typeof price === "number" && typeof newPctVal === "number" && newPctVal > 0 && newPctVal < 100) {
+      const calculatedOriginal = Math.round(price / (1 - newPctVal / 100));
+      setOriginalPrice(calculatedOriginal);
+    }
+  };
 
   // Feedback notifications
   const [notification, setNotification] = React.useState<{ type: "success" | "error"; text: string } | null>(null);
@@ -357,6 +412,9 @@ export default function AdminPanel({
       setName(editingProduct.name);
       setCategoryId(editingProduct.categoryId);
       setPrice(editingProduct.price);
+      setOriginalPrice(editingProduct.originalPrice !== undefined ? editingProduct.originalPrice : "");
+      setDiscountPercent(editingProduct.discountPercent !== undefined ? editingProduct.discountPercent : "");
+      setPointsEarned(editingProduct.pointsEarned !== undefined ? editingProduct.pointsEarned : "");
       setImageUrl(editingProduct.image);
       
       // Parse secondary/additional images (exclude primary image if duplicate)
@@ -385,6 +443,9 @@ export default function AdminPanel({
     setName("");
     setCategoryId("rings");
     setPrice("");
+    setOriginalPrice("");
+    setDiscountPercent("");
+    setPointsEarned("");
     setImageUrl("");
     setAdditionalImages([]);
     setTagline("");
@@ -408,7 +469,9 @@ export default function AdminPanel({
   const [rewardDescriptionEn, setRewardDescriptionEn] = React.useState("");
 
   const fetchRewards = () => {
-    fetch("/api/rewards")
+    fetch("/api/rewards", {
+      headers: getAuthHeaders()
+    })
       .then((res) => res.json())
       .then((data) => setRewards(data))
       .catch((err) => console.error("Error loading rewards:", err));
@@ -439,7 +502,7 @@ export default function AdminPanel({
 
     fetch("/api/rewards", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getAuthHeaders(),
       body: JSON.stringify(payload),
     })
       .then((res) => res.json())
@@ -464,6 +527,7 @@ export default function AdminPanel({
   const handleDeleteReward = (id: string) => {
     fetch(`/api/rewards/${id}`, {
       method: "DELETE",
+      headers: getAuthHeaders(),
     })
       .then((res) => res.json())
       .then((data) => {
@@ -494,7 +558,7 @@ export default function AdminPanel({
 
     fetch("/api/promos", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: getAuthHeaders(),
       body: JSON.stringify(payload),
     })
       .then((res) => res.json())
@@ -515,6 +579,7 @@ export default function AdminPanel({
   const handleDeletePromo = (id: string) => {
     fetch(`/api/promos/${id}`, {
       method: "DELETE",
+      headers: getAuthHeaders(),
     })
       .then((res) => res.json())
       .then((data) => {
@@ -554,6 +619,9 @@ export default function AdminPanel({
       categoryId,
       categoryName,
       price: Number(price),
+      originalPrice: originalPrice === "" ? undefined : Number(originalPrice),
+      discountPercent: discountPercent === "" ? undefined : Number(discountPercent),
+      pointsEarned: pointsEarned === "" ? undefined : Number(pointsEarned),
       image: imageUrl.trim(),
       secondaryImages: [imageUrl.trim(), ...additionalImages.map((img) => img.trim()).filter(Boolean)],
       tagline: tagline.trim() || `"${name.trim()} by VERO Boutique"`,
@@ -1087,7 +1155,7 @@ export default function AdminPanel({
 
                         {/* WhatsApp Communication Prompt */}
                         <a
-                          href={`https://wa.me/201026040845?text=${encodeURIComponent(
+                          href={`https://wa.me/${selectedOrder.shippingPhone ? selectedOrder.shippingPhone.replace(/[^0-9]/g, "") : "201102136064"}?text=${encodeURIComponent(
                             `مرحباً ${selectedOrder.shippingName}،\nيسعدنا إخطاركم بأن حالة طلبكم رقم #${selectedOrder.orderNumber} لدى Vero Boutique هي الآن: *${selectedOrder.status}*.\n\nتفاصيل الطلب:\nالقيمة الإجمالية: EGP ${selectedOrder.total?.toLocaleString()}\nالعنوان: ${selectedOrder.shippingAddress}، ${selectedOrder.shippingCity}\n\nشكراً لتسوقكم معنا!`
                           )}`}
                           target="_blank"
@@ -1209,7 +1277,17 @@ export default function AdminPanel({
                           {product.categoryName}
                         </td>
                         <td className="py-4 px-4 font-mono font-bold text-brand-umber text-sm">
-                          EGP {product.price.toLocaleString()}
+                          <PriceDisplay
+                            price={product.price}
+                            originalPrice={product.originalPrice}
+                            discountPercent={product.discountPercent}
+                            size="xs"
+                          />
+                          {(product.pointsEarned || Math.round(product.price * 0.1)) > 0 && (
+                            <span className="block mt-1 text-[10px] text-amber-700 font-sans font-semibold">
+                              +{(product.pointsEarned || Math.round(product.price * 0.1))} نقطة VERO
+                            </span>
+                          )}
                         </td>
                         <td className="py-4 px-4 text-center">
                           {product.stock !== undefined ? (
@@ -1336,21 +1414,100 @@ export default function AdminPanel({
                 />
               </div>
 
-              {/* Product Price */}
+              {/* Product Price (EGP) */}
               <div className="space-y-2">
                 <label className="text-xs font-bold text-brand-umber uppercase tracking-wider flex items-center gap-1.5">
-                  <DollarSign className="w-3.5 h-3.5 text-brand-outline" />
-                  <span>Price (USD) *</span>
+                  <DollarSign className="w-3.5 h-3.5 text-brand-gold" />
+                  <span>السعر الجديد (EGP) / Active Price *</span>
                 </label>
                 <input
                   type="number"
                   required
                   min="1"
-                  placeholder="e.g. 1450"
+                  placeholder="مثال: 441"
                   value={price}
-                  onChange={(e) => setPrice(e.target.value === "" ? "" : Number(e.target.value))}
+                  onChange={(e) => handlePriceChange(e.target.value === "" ? "" : Number(e.target.value))}
                   className="w-full bg-white border border-brand-outline-variant/40 rounded-sm text-xs px-4 py-3 outline-none focus:border-brand-gold text-brand-umber font-medium font-mono"
                 />
+              </div>
+
+              {/* Old Price (EGP) */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-brand-umber uppercase tracking-wider flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-gray-400" />
+                  <span>السعر القديم (EGP) / Old Price</span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="مثال: 688 (اختياري)"
+                  value={originalPrice}
+                  onChange={(e) => handleOriginalPriceChange(e.target.value === "" ? "" : Number(e.target.value))}
+                  className="w-full bg-white border border-brand-outline-variant/40 rounded-sm text-xs px-4 py-3 outline-none focus:border-brand-gold text-brand-umber font-medium font-mono"
+                />
+              </div>
+
+              {/* Discount Percentage (%) */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-brand-umber uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>نسبة الخصم (%) / Discount Percent</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="1"
+                    max="99"
+                    placeholder="مثال: 35 (تلقائي عند إدخال السعر القديم)"
+                    value={discountPercent}
+                    onChange={(e) => handleDiscountPercentChange(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full bg-white border border-brand-outline-variant/40 rounded-sm text-xs px-4 py-3 outline-none focus:border-brand-gold text-brand-umber font-medium font-mono pr-8"
+                  />
+                  <span className="absolute right-3 top-3 text-xs font-bold text-emerald-600">%</span>
+                </div>
+              </div>
+
+              {/* VERO Points Earned Field */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-brand-umber uppercase tracking-wider flex items-center gap-1.5">
+                  <Award className="w-3.5 h-3.5 text-amber-600" />
+                  <span>نقاط VERO المكتسبة عند الشراء / Points Earned</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="مثال: 50 (تلقائي بناءً على السعر أو ادخل تخصيصك)"
+                    value={pointsEarned}
+                    onChange={(e) => setPointsEarned(e.target.value === "" ? "" : Number(e.target.value))}
+                    className="w-full bg-white border border-amber-200/80 rounded-sm text-xs px-4 py-3 outline-none focus:border-amber-500 text-brand-umber font-medium font-mono pr-12"
+                  />
+                  <span className="absolute right-3 top-3 text-[11px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                    نقطة
+                  </span>
+                </div>
+              </div>
+
+              {/* Price & Points Preview Box */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-brand-umber uppercase tracking-wider flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5 text-brand-gold" />
+                  <span>معاينة العرض للعميل / Preview</span>
+                </label>
+                <div className="bg-brand-surface-low/60 border border-brand-gold/20 p-2.5 rounded-sm flex flex-wrap items-center justify-between gap-2 min-h-[42px]">
+                  <PriceDisplay
+                    price={Number(price) || 0}
+                    originalPrice={originalPrice !== "" ? Number(originalPrice) : undefined}
+                    discountPercent={discountPercent !== "" ? Number(discountPercent) : undefined}
+                    size="sm"
+                  />
+                  {pointsEarned !== "" && Number(pointsEarned) > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-100/80 text-amber-900 border border-amber-300 text-[11px] font-bold">
+                      <Sparkles className="w-3 h-3 text-amber-600" />
+                      <span>تكسب +{pointsEarned} نقطة</span>
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Category selector */}

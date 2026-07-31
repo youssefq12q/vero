@@ -1,17 +1,22 @@
-import { createServerClient } from '@supabase/ssr'
+import { createServerClient } from '@supabase/ssr';
+import { normalizeSupabaseUrl } from './client';
+
+function getServerEnv() {
+  const rawUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
+  const rawKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
+
+  const supabaseUrl = normalizeSupabaseUrl(rawUrl);
+  const supabaseAnonKey = (rawKey || "").replace(/^['"]|['"]$/g, "").trim();
+
+  return { supabaseUrl, supabaseAnonKey };
+}
 
 /**
  * Creates a server-side Supabase client using @supabase/ssr.
- * This is designed to be highly compatible with various server-side cookie handlers,
- * including frameworks like Express or Next.js.
- * 
- * @param cookieStore An optional standard or Next-like cookie store object
  */
 export function createClient(cookieStore?: any) {
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
-  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
+  const { supabaseUrl, supabaseAnonKey } = getServerEnv();
 
-  // If a cookie store is provided (e.g. Next.js cookies() or a custom adapter), use it
   if (cookieStore) {
     return createServerClient(supabaseUrl, supabaseAnonKey, {
       cookies: {
@@ -32,21 +37,20 @@ export function createClient(cookieStore?: any) {
               }
             });
           } catch {
-            // Ignore if we are in an environment that doesn't permit setting headers
+            // Ignore if environment prevents header modifications
           }
         },
       },
     });
   }
 
-  // Default fallback for general server-side scripting or REST interactions
   return createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {
       getAll() {
         return [];
       },
       setAll() {
-        // No-op fallback
+        // No-op
       },
     },
   });
@@ -54,11 +58,9 @@ export function createClient(cookieStore?: any) {
 
 /**
  * Creates an Express-specific Supabase client.
- * Designed to interact seamlessly with your Express backend endpoints!
  */
 export function createExpressClient(req: any, res: any) {
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
-  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
+  const { supabaseUrl, supabaseAnonKey } = getServerEnv();
 
   return createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {

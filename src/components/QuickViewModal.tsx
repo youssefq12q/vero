@@ -3,6 +3,7 @@ import { X, ShoppingBag, Heart, Check, Sparkles, Star } from "lucide-react";
 import { Product, UserProfile, Order, Review } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import ProductReviewsSection from "./ProductReviewsSection";
+import PriceDisplay from "./PriceDisplay";
 
 interface QuickViewModalProps {
   product: Product | null;
@@ -135,9 +136,59 @@ export default function QuickViewModal({
               <h2 className="font-serif text-2xl md:text-3xl text-brand-umber mb-2 tracking-wide font-normal">
                 {product.name}
               </h2>
-              <p className="font-sans text-lg font-semibold text-brand-gold mb-6">
-                ${product.price.toLocaleString()}.00
-              </p>
+              {(() => {
+                const productReviews = allReviews.filter((r) => r.productId === product.id && (r.status === "approved" || !r.status));
+                const avg = productReviews.length > 0 ? productReviews.reduce((acc, r) => acc + (r.rating || 5), 0) / productReviews.length : 5.0;
+                return (
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="flex items-center gap-0.5">
+                      {[1, 2, 3, 4, 5].map((s) => (
+                        <Star
+                          key={s}
+                          className={`w-3.5 h-3.5 ${
+                            s <= Math.round(avg)
+                              ? "fill-[#c5a880] text-[#c5a880]"
+                              : "text-gray-300"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-xs font-mono text-brand-outline">
+                      {productReviews.length > 0
+                        ? `${avg.toFixed(1)} (${productReviews.length} ${productReviews.length === 1 ? "review" : "reviews"} / تقييم)`
+                        : "5.0 (جديد - أضف أول تقييم)"}
+                    </span>
+                  </div>
+                );
+              })()}
+              <PriceDisplay
+                price={product.price}
+                originalPrice={product.originalPrice}
+                discountPercent={product.discountPercent}
+                size="lg"
+                className="mb-3"
+              />
+
+              {/* VERO Points Reward Callout */}
+              {(() => {
+                const pts = product.pointsEarned ?? Math.round(product.price * 0.1);
+                if (pts <= 0) return null;
+                return (
+                  <div className="mb-6 p-3 rounded-lg bg-gradient-to-r from-amber-50 to-amber-100/60 border border-amber-300/80 flex items-center gap-2.5 text-amber-900 shadow-sm">
+                    <div className="w-7 h-7 rounded-full bg-amber-500/20 flex items-center justify-center shrink-0 border border-amber-400/40">
+                      <span className="text-amber-700 font-bold text-xs">✨</span>
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-amber-950">
+                        مكافأة الشراء: +{pts} نقطة VERO
+                      </p>
+                      <p className="text-[11px] text-amber-800 font-medium">
+                        تُضاف تلقائياً لحسابك عند إتمام الطلب لتطبيق خصومات مستقبلاً
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {product.stock !== undefined && (
                 <div className="mb-6">

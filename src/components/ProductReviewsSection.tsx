@@ -18,7 +18,9 @@ import {
   Upload,
   Lock,
   ThumbsDown,
-  Check
+  Check,
+  Eye,
+  EyeOff
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Review, UserProfile, Order } from "../types";
@@ -52,12 +54,19 @@ export default function ProductReviewsSection({
   onRefreshReviews,
   onOpenAuth,
 }: ProductReviewsSectionProps) {
+  const isAdmin = useMemo(() => {
+    const isSpecialEmail = user?.email?.toLowerCase() === "vero2026@vero.com";
+    if (user?.role === "admin" || isSpecialEmail) return true;
+    const savedUserStr = localStorage.getItem("vero_user");
+    return savedUserStr?.includes("vero2026@vero.com") || savedUserStr?.includes('"role":"admin"') || false;
+  }, [user]);
+
   // Filter approved reviews for this product
   const productReviews = useMemo(() => {
     return allReviews.filter(
-      (r) => r.productId === productId && (r.status === "approved" || r.userId === user?.email)
+      (r) => r.productId === productId && (isAdmin || r.status === "approved" || r.userId === user?.email || r.userEmail === user?.email)
     );
-  }, [allReviews, productId, user]);
+  }, [allReviews, productId, user, isAdmin]);
 
   // Statistics calculation
   const stats = useMemo(() => {
@@ -147,6 +156,12 @@ export default function ProductReviewsSection({
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState<Review | null>(null);
   const [selectedMediaLightbox, setSelectedMediaLightbox] = useState<{ url: string; isVideo?: boolean } | null>(null);
+
+  // Admin Reply States
+  const [replyingReview, setReplyingReview] = useState<Review | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const [replyAdminName, setReplyAdminName] = useState("فريق إدارة VERO");
+  const [isSubmittingReply, setIsSubmittingReply] = useState(false);
 
   // Review Form States
   const [formRating, setFormRating] = useState(5);
@@ -238,6 +253,26 @@ export default function ProductReviewsSection({
     reader.readAsDataURL(file);
   };
 
+  // Helper for Session Auth Headers
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem("vero_session_token");
+    const savedUserStr = localStorage.getItem("vero_user");
+    let userEmail = user?.email || "";
+    if (!userEmail && savedUserStr) {
+      try {
+        const parsed = JSON.parse(savedUserStr);
+        if (parsed.email) userEmail = parsed.email;
+      } catch (e) {
+        // ignore
+      }
+    }
+    return {
+      "Content-Type": "application/json",
+      "X-User-Email": userEmail,
+      ...(token ? { "Authorization": `Bearer ${token}`, "X-Session-Token": token } : {})
+    };
+  };
+
   // Submit Review
   const handleSubmitReview = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -279,7 +314,7 @@ export default function ProductReviewsSection({
 
       const res = await fetch(url, {
         method,
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify(payload),
       });
 
@@ -300,16 +335,89 @@ export default function ProductReviewsSection({
 
   // Delete Review
   const handleDeleteReview = async (reviewId: string) => {
-    if (!window.confirm("هل أنت تأكد من رغبتك في حذف هذا التقييم؟ / Are you sure you want to delete your review?")) return;
-
     try {
-      const res = await fetch(`/api/reviews/${reviewId}`, { method: "DELETE" });
+      const res = await fetch(`/api/reviews/${reviewId}`, { 
+        method: "DELETE",
+        headers: getAuthHeaders()
+      });
       if (res.ok) {
         setShowReviewModal(false);
         onRefreshReviews();
+      } else {
+        console.error("Failed to delete review:", await res.text());
       }
     } catch (err) {
       console.error("Error deleting review:", err);
+    }
+  };
+
+  // Delete Admin Reply
+  const handleDeleteReply = async (reviewId: string) => {
+    try {
+      const res = await fetch(`/api/reviews/${reviewId}/reply`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        onRefreshReviews();
+      } else {
+        console.error("Failed to delete reply:", await res.text());
+      }
+    } catch (err) {
+      console.error("Error deleting reply:", err);
+    }
+  };
+
+  // Admin Actions
+  const handleUpdateStatus = async (reviewId: string, newStatus: "approved" | "rejected" | "hidden" | "pending") => {
+    try {
+      const res = await fetch(`/api/reviews/${reviewId}`, {
+        method: "PUT",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (res.ok) {
+        onRefreshReviews();
+      } else {
+        console.error("Failed to update status:", await res.text());
+      }
+    } catch (err) {
+      console.error("Error updating review status:", err);
+    }
+  };
+
+  const handleOpenReplyModal = (review: Review) => {
+    setReplyingReview(review);
+    setReplyText(review.reply?.reply || "");
+    setReplyAdminName(review.reply?.adminName || "فريق إدارة VERO");
+  };
+
+  const handleSendReply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!replyingReview || !replyText.trim()) return;
+
+    setIsSubmittingReply(true);
+    try {
+      const res = await fetch(`/api/reviews/${replyingReview.id}/reply`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          adminName: replyAdminName.trim(),
+          reply: replyText.trim(),
+        }),
+      });
+
+      if (res.ok) {
+        setReplyingReview(null);
+        setReplyText("");
+        onRefreshReviews();
+      } else {
+        console.error("Failed to send reply:", await res.text());
+      }
+    } catch (err) {
+      console.error("Error replying to review:", err);
+    } finally {
+      setIsSubmittingReply(false);
     }
   };
 
@@ -324,7 +432,7 @@ export default function ProductReviewsSection({
     try {
       const res = await fetch(`/api/reviews/${reviewId}/helpful`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ userId: user.email }),
       });
       if (res.ok) {
@@ -345,7 +453,7 @@ export default function ProductReviewsSection({
     try {
       const res = await fetch(`/api/reviews/${showReportModal.id}/report`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           userId: user?.email || "anon",
           userName: user?.name || "Customer",
@@ -407,23 +515,14 @@ export default function ProductReviewsSection({
         {/* Action Button: Write or Edit Review */}
         <div>
           {user ? (
-            userPurchasedAndDeliveredOrder ? (
-              <button
-                type="button"
-                onClick={openWriteReviewModal}
-                className="inline-flex items-center gap-2 bg-[#c5a880] hover:bg-[#a68253] text-white text-xs font-bold px-6 py-3.5 rounded-xl shadow-xs transition-all cursor-pointer transform active:scale-95"
-              >
-                <Edit3 className="w-4 h-4" />
-                <span>{existingUserReview ? "تعديل تقييمك / Edit Review" : "كتابة تقييم / Write a Review"}</span>
-              </button>
-            ) : (
-              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 px-4 py-3 rounded-xl text-xs text-amber-800">
-                <Lock className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>
-                  التقييم متاح حصرياً للعملاء الذين قاموا بشراء واستلام هذا المنتج (Verified Purchase).
-                </span>
-              </div>
-            )
+            <button
+              type="button"
+              onClick={openWriteReviewModal}
+              className="inline-flex items-center gap-2 bg-[#c5a880] hover:bg-[#a68253] text-white text-xs font-bold px-6 py-3.5 rounded-xl shadow-xs transition-all cursor-pointer transform active:scale-95"
+            >
+              <Edit3 className="w-4 h-4" />
+              <span>{existingUserReview ? "تعديل تقييمك / Edit Review" : "كتابة تقييم / Write a Review"}</span>
+            </button>
           ) : (
             <button
               type="button"
@@ -676,14 +775,25 @@ export default function ProductReviewsSection({
                 {/* VERO Official Admin Reply */}
                 {rev.reply && (
                   <div className="bg-[#faf7f2] border-r-4 border-[#c5a880] border border-[#eae3d9] p-4 rounded-xl space-y-1.5 my-2">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-[#c5a880]" />
-                      <span className="text-xs font-bold text-[#1f1915]">
-                        {rev.reply.adminName || "رد VERO الرسمي"}
-                      </span>
-                      <span className="text-[10px] text-[#8c827a] font-mono">
-                        {new Date(rev.reply.createdAt).toLocaleDateString("ar-EG")}
-                      </span>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-[#c5a880]" />
+                        <span className="text-xs font-bold text-[#1f1915]">
+                          {rev.reply.adminName || "رد VERO الرسمي"}
+                        </span>
+                        <span className="text-[10px] text-[#8c827a] font-mono">
+                          {new Date(rev.reply.createdAt).toLocaleDateString("ar-EG")}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteReply(rev.id)}
+                        className="text-rose-600 hover:bg-rose-100 p-1 px-2 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                        title="حذف الرد الرسمي"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>حذف الرد</span>
+                      </button>
                     </div>
                     <p className="text-xs text-[#1f1915]/80 leading-relaxed font-serif pr-2">
                       {rev.reply.reply}
@@ -691,7 +801,7 @@ export default function ProductReviewsSection({
                   </div>
                 )}
 
-                {/* Footer Controls (Helpful Vote, Report, Owner Edit) */}
+                {/* Footer Controls (Helpful Vote, Report, Owner Edit, Delete) */}
                 <div className="flex items-center justify-between border-t border-[#f5f0eb] pt-3 text-xs">
                   <div className="flex items-center gap-3">
                     <button
@@ -718,8 +828,8 @@ export default function ProductReviewsSection({
                     </button>
                   </div>
 
-                  {isUserOwner && (
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2">
+                    {isUserOwner && (
                       <button
                         type="button"
                         onClick={openWriteReviewModal}
@@ -728,18 +838,87 @@ export default function ProductReviewsSection({
                         <Edit3 className="w-3.5 h-3.5" />
                         <span>تعديل</span>
                       </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteReview(rev.id)}
+                      className="text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2.5 py-1 rounded-lg font-bold text-xs inline-flex items-center gap-1 cursor-pointer transition-all border border-rose-200/50 shadow-2xs"
+                      title="حذف هذا الكومنت / التقييم نهائياً"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>حذف الكومنت</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Admin Moderation Toolbar inside Product Page */}
+                {isAdmin && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-amber-200/60 bg-[#faf7f2] p-3 rounded-xl mt-3 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-[#c5a880] flex items-center gap-1">
+                        <ShieldCheck className="w-3.5 h-3.5" /> تحكم الإدارة:
+                      </span>
+                      {rev.status !== "approved" && (
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateStatus(rev.id, "approved")}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-2.5 py-1 rounded-lg inline-flex items-center gap-1 cursor-pointer shadow-2xs text-[11px]"
+                        >
+                          <Check className="w-3 h-3" /> اعتماد (Approve)
+                        </button>
+                      )}
+
+                      {rev.status !== "rejected" && (
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateStatus(rev.id, "rejected")}
+                          className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-2.5 py-1 rounded-lg inline-flex items-center gap-1 cursor-pointer shadow-2xs text-[11px]"
+                        >
+                          <X className="w-3 h-3" /> رفض (Reject)
+                        </button>
+                      )}
+
+                      {rev.status !== "hidden" ? (
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateStatus(rev.id, "hidden")}
+                          className="bg-gray-200 hover:bg-gray-300 text-[#1f1915] font-bold px-2.5 py-1 rounded-lg inline-flex items-center gap-1 cursor-pointer text-[11px]"
+                        >
+                          <EyeOff className="w-3 h-3" /> إخفاء (Hide)
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateStatus(rev.id, "approved")}
+                          className="bg-gray-200 hover:bg-gray-300 text-[#1f1915] font-bold px-2.5 py-1 rounded-lg inline-flex items-center gap-1 cursor-pointer text-[11px]"
+                        >
+                          <Eye className="w-3 h-3" /> إظهار (Show)
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenReplyModal(rev)}
+                        className="bg-[#c5a880] hover:bg-[#a68253] text-white font-bold px-3 py-1 rounded-lg inline-flex items-center gap-1.5 cursor-pointer shadow-2xs text-[11px]"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        <span>{rev.reply ? "تعديل الرد الرسمي" : "إضافة رد رسمي (Official Reply)"}</span>
+                      </button>
 
                       <button
                         type="button"
                         onClick={() => handleDeleteReview(rev.id)}
-                        className="text-rose-600 hover:text-rose-800 font-bold text-xs inline-flex items-center gap-1 cursor-pointer"
+                        className="p-1 rounded-lg text-rose-600 hover:bg-rose-100 cursor-pointer"
+                        title="حذف التقييم نهائياً"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>حذف</span>
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </motion.div>
             );
           })
@@ -786,9 +965,15 @@ export default function ProductReviewsSection({
                   <img src={productImage} alt={productName} className="w-12 h-12 rounded-lg object-cover border" />
                   <div>
                     <h4 className="font-bold text-xs text-[#1f1915]">{productName}</h4>
-                    <span className="text-[10px] text-emerald-700 font-bold flex items-center gap-1">
-                      <ShieldCheck className="w-3 h-3" /> شراء مؤكد من حسابك (Verified Purchase)
-                    </span>
+                    {userPurchasedAndDeliveredOrder || existingUserReview?.verifiedPurchase ? (
+                      <span className="text-[10px] text-emerald-700 font-bold flex items-center gap-1">
+                        <ShieldCheck className="w-3 h-3" /> شراء مؤكد من حسابك (Verified Purchase)
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-[#8c827a] font-medium flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-[#c5a880]" /> مستخدم مسجل (Registered User)
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -1019,6 +1204,79 @@ export default function ProductReviewsSection({
                   </div>
                 </form>
               )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ADMIN REPLY MODAL */}
+      <AnimatePresence>
+        {replyingReview && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white border border-[#eae3d9] rounded-2xl p-6 max-w-lg w-full shadow-2xl relative space-y-4 text-right"
+            >
+              <button
+                type="button"
+                onClick={() => setReplyingReview(null)}
+                className="absolute top-4 left-4 text-[#8c827a] hover:text-rose-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-center gap-2 text-[#1f1915]">
+                <MessageSquare className="w-6 h-6 text-[#c5a880]" />
+                <h3 className="font-bold text-base">إضافة / تعديل الرد الرسمي</h3>
+              </div>
+
+              <div className="p-3 bg-[#faf7f2] rounded-xl text-xs text-[#8c827a]">
+                الرد على تقييم: <strong className="text-[#1f1915]">{replyingReview.title}</strong>
+              </div>
+
+              <form onSubmit={handleSendReply} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-[#1f1915] mb-1">اسم المُراد الظهور به كمسؤول:</label>
+                  <input
+                    type="text"
+                    value={replyAdminName}
+                    onChange={(e) => setReplyAdminName(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-[#eae3d9] rounded-xl focus:outline-none focus:border-[#c5a880]"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[#1f1915] mb-1">نص الرد الرسمي:</label>
+                  <textarea
+                    rows={4}
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    placeholder="اكتب رد إدارة VERO هنا... سيتم إرسال إشعار للعميل ومشاركة الرد للعامة."
+                    className="w-full px-3 py-2 text-sm border border-[#eae3d9] rounded-xl focus:outline-none focus:border-[#c5a880]"
+                    required
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setReplyingReview(null)}
+                    className="px-4 py-2 text-xs font-bold text-[#8c827a] hover:bg-[#faf7f2] rounded-xl transition-colors cursor-pointer"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingReply}
+                    className="px-5 py-2 bg-[#1f1915] text-[#d4af37] text-xs font-bold rounded-xl hover:bg-[#c5a880] hover:text-[#1f1915] transition-all disabled:opacity-50 cursor-pointer"
+                  >
+                    {isSubmittingReply ? "جاري الإرسال..." : "حفظ وإشعار العميل ✨"}
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </div>
         )}

@@ -101,6 +101,8 @@ export default function CheckoutFlow({
   const [cardCVV, setCardCVV] = React.useState("");
   const [generatedOrderNumber, setGeneratedOrderNumber] = React.useState("");
   const [earnedPoints, setEarnedPoints] = React.useState(0);
+  const [baseEarnedPoints, setBaseEarnedPoints] = React.useState(0);
+  const [tierBonusPoints, setTierBonusPoints] = React.useState(0);
   const [earnedBonusPoints, setEarnedBonusPoints] = React.useState(0);
   const [tierBoostPercent, setTierBoostPercent] = React.useState(0);
   const [selectedPointsTier, setSelectedPointsTier] = React.useState<typeof POINTS_DISCOUNT_TIERS[0] | null>(null);
@@ -108,12 +110,12 @@ export default function CheckoutFlow({
   const [pointsDiscountAmount, setPointsDiscountAmount] = React.useState(0);
 
   const getWhatsAppLink = (orderNumToUse?: string) => {
-    const phone = "201012345678"; // standard Egyptian business placeholder
+    const phone = "201102136064"; // Updated store WhatsApp phone number
     const orderNum = orderNumToUse || generatedOrderNumber || "VR-TEMP";
     const discountVal = selectedPointsTier ? Math.round(total * (selectedPointsTier.percentage / 100)) : 0;
     const finalPayable = Math.max(0, total - discountVal);
     const itemsList = cartItems.map(item => `- ${item.product.name} (${item.selectedSize || "One Size"} / ${item.selectedMaterial || "Platinum"}) x${item.quantity} - EGP ${(item.product.price * item.quantity).toLocaleString()}`).join("\n");
-    const message = `مرحباً بوتيك فيرو VERO Boutique ⚜️\nأود تأكيد طلبي الجديد:\n\nرقم الطلب: ${orderNum}\nالاسم: ${shippingName}\nالبريد الإلكتروني: ${shippingEmail}\nالهاتف: ${shippingPhone}\nالعنوان: ${shippingAddress}، ${shippingCity}، ${shippingZip}\n\nالمنتجات:\n${itemsList}\n\nإجمالي المبلغ المطلوب: EGP ${finalPayable.toLocaleString()}\n\nيرجى تأكيد استلام الطلب وبدء الشحن من فلورنسا. شكراً لكم!`;
+    const message = `مرحباً بوتيك فيرو VERO Boutique ⚜️\nأود تأكيد طلبي الجديد:\n\nرقم الطلب: ${orderNum}\nالاسم: ${shippingName}\nالبريد الإلكتروني: ${shippingEmail}\nالهاتف: ${shippingPhone}\nالعنوان: ${shippingAddress}، ${shippingCity}، ${shippingZip}\n\nالمنتجات:\n${itemsList}\n\nإجمالي المبلغ المطلوب: EGP ${finalPayable.toLocaleString()}\n\nيرجى تأكيد استلام الطلب. شكراً لكم!`;
     return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
   };
 
@@ -159,8 +161,19 @@ export default function CheckoutFlow({
     }
     setTierBoostPercent(boostPct);
 
-    // Reward points based on order total: <500 => 25, 500-700 => 50, >700 => 100
-    const basePts = getOrderPoints(finalPayable);
+    // Calculate points earned directly from the products in the cart
+    const productPointsSum = cartItems.reduce((sum, item) => {
+      const pts = item.product.pointsEarned !== undefined && item.product.pointsEarned !== null
+        ? item.product.pointsEarned
+        : Math.round(item.product.price * 0.1);
+      return sum + (pts * item.quantity);
+    }, 0);
+
+    const basePts = productPointsSum > 0 ? productPointsSum : getOrderPoints(finalPayable);
+    setBaseEarnedPoints(basePts);
+
+    const tierBonusPts = Math.round(basePts * (boostPct / 100));
+    setTierBonusPoints(tierBonusPts);
 
     let isFirst = true;
     try {
@@ -179,7 +192,7 @@ export default function CheckoutFlow({
     const bonusPts = isFirst ? 100 : 0;
     setEarnedBonusPoints(bonusPts);
 
-    const finalEarnedPts = basePts + bonusPts;
+    const finalEarnedPts = basePts + tierBonusPts + bonusPts;
     setEarnedPoints(finalEarnedPts);
 
     const newOrder = {
@@ -347,8 +360,19 @@ export default function CheckoutFlow({
     }
     setTierBoostPercent(boostPct);
 
-    // Points based on order total: <500 => 25, 500-700 => 50, >700 => 100
-    const basePts = getOrderPoints(finalPayable);
+    // Calculate points earned directly from the products in the cart
+    const productPointsSum = cartItems.reduce((sum, item) => {
+      const pts = item.product.pointsEarned !== undefined && item.product.pointsEarned !== null
+        ? item.product.pointsEarned
+        : Math.round(item.product.price * 0.1);
+      return sum + (pts * item.quantity);
+    }, 0);
+
+    const basePts = productPointsSum > 0 ? productPointsSum : getOrderPoints(finalPayable);
+    setBaseEarnedPoints(basePts);
+
+    const tierBonusPts = Math.round(basePts * (boostPct / 100));
+    setTierBonusPoints(tierBonusPts);
 
     // First order bonus: +100 gift points
     let isFirst = true;
@@ -368,7 +392,7 @@ export default function CheckoutFlow({
     const bonusPts = isFirst ? 100 : 0;
     setEarnedBonusPoints(bonusPts);
 
-    const finalEarnedPts = basePts + bonusPts;
+    const finalEarnedPts = basePts + tierBonusPts + bonusPts;
     setEarnedPoints(finalEarnedPts);
 
     // Save order details to localStorage
@@ -879,13 +903,13 @@ export default function CheckoutFlow({
                           </div>
                         )}
                         <div className="flex justify-between">
-                          <span>نقاط مكافأة الطلب ({total - pointsDiscountAmount < 500 ? "أقل من 500ج = 25ن" : total - pointsDiscountAmount <= 700 ? "من 500 إلى 700ج = 50ن" : "أكثر من 700ج = 100ن"}):</span>
-                          <span className="font-semibold text-brand-dark">+{getOrderPoints(total - pointsDiscountAmount)} PTS</span>
+                          <span>نقاط المنتجات المشتراة / Product Points:</span>
+                          <span className="font-semibold text-brand-dark">+{baseEarnedPoints} PTS</span>
                         </div>
                         {tierBoostPercent > 0 && (
                           <div className="flex justify-between text-amber-700">
                             <span>بونص الفئة (+{tierBoostPercent}%):</span>
-                            <span className="font-semibold">+{Math.round(((total - pointsDiscountAmount) / 10) * (tierBoostPercent / 100))} PTS</span>
+                            <span className="font-semibold">+{tierBonusPoints} PTS</span>
                           </div>
                         )}
                         {earnedBonusPoints > 0 && (
@@ -898,6 +922,12 @@ export default function CheckoutFlow({
                           <span>إجمالي النقاط المكتسبة / Net Earned:</span>
                           <span>+{earnedPoints} PTS</span>
                         </div>
+                        {user && (
+                          <div className="flex justify-between text-[#8c6d46] font-bold text-[9.5px] pt-1 border-t border-[#c5a880]/15">
+                            <span>رصيد نقاطك الحالي / Current Points:</span>
+                            <span>{user.loyaltyPoints || 0} PTS</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}

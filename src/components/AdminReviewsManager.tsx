@@ -151,12 +151,32 @@ export default function AdminReviewsManager({
     });
   }, [reviews, searchQuery, statusFilter, ratingFilter, productFilter, reportedOnly]);
 
+  // Helper for auth headers
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem("vero_session_token");
+    const savedUserStr = localStorage.getItem("vero_user");
+    let userEmail = "vero2026@vero.com";
+    if (savedUserStr) {
+      try {
+        const parsed = JSON.parse(savedUserStr);
+        if (parsed.email) userEmail = parsed.email;
+      } catch (e) {
+        // ignore
+      }
+    }
+    return {
+      "Content-Type": "application/json",
+      "X-User-Email": userEmail,
+      ...(token ? { "Authorization": `Bearer ${token}`, "X-Session-Token": token } : {})
+    };
+  };
+
   // Actions
   const handleUpdateStatus = async (reviewId: string, newStatus: "approved" | "rejected" | "hidden" | "pending") => {
     try {
       const res = await fetch(`/api/reviews/${reviewId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ status: newStatus }),
       });
 
@@ -165,6 +185,8 @@ export default function AdminReviewsManager({
           triggerNotification(`تم تحديث حالة التقييم إلى "${newStatus}"`, "success");
         }
         onRefreshReviews();
+      } else {
+        console.error("Failed to update status:", await res.text());
       }
     } catch (err) {
       console.error("Error updating review status:", err);
@@ -172,13 +194,16 @@ export default function AdminReviewsManager({
   };
 
   const handleDeleteReview = async (reviewId: string) => {
-    if (!window.confirm("هل أنت متأكد من حذف هذا التقييم نهائياً؟ / Confirm review deletion?")) return;
-
     try {
-      const res = await fetch(`/api/reviews/${reviewId}`, { method: "DELETE" });
+      const res = await fetch(`/api/reviews/${reviewId}`, { 
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
       if (res.ok) {
         if (triggerNotification) triggerNotification("تم حذف التقييم بنجاح", "success");
         onRefreshReviews();
+      } else {
+        console.error("Failed to delete review:", await res.text());
       }
     } catch (err) {
       console.error("Error deleting review:", err);
@@ -199,7 +224,7 @@ export default function AdminReviewsManager({
     try {
       const res = await fetch(`/api/reviews/${replyingReview.id}/reply`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           adminName: replyAdminName.trim(),
           reply: replyText.trim(),
@@ -211,11 +236,30 @@ export default function AdminReviewsManager({
         setReplyingReview(null);
         setReplyText("");
         onRefreshReviews();
+      } else {
+        console.error("Failed to send reply:", await res.text());
       }
     } catch (err) {
       console.error("Error replying to review:", err);
     } finally {
       setIsSubmittingReply(false);
+    }
+  };
+
+  const handleDeleteReply = async (reviewId: string) => {
+    try {
+      const res = await fetch(`/api/reviews/${reviewId}/reply`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        if (triggerNotification) triggerNotification("تم حذف الرد الرسمي بنجاح", "success");
+        onRefreshReviews();
+      } else {
+        console.error("Failed to delete reply:", await res.text());
+      }
+    } catch (err) {
+      console.error("Error deleting reply:", err);
     }
   };
 
@@ -524,13 +568,24 @@ export default function AdminReviewsManager({
                 {rev.reply && (
                   <div className="bg-[#faf7f2] border-r-4 border-[#c5a880] p-3 rounded-xl text-xs space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-[#1f1915] flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5">
                         <Sparkles className="w-3.5 h-3.5 text-[#c5a880]" />
-                        {rev.reply.adminName}:
-                      </span>
-                      <span className="text-[10px] text-[#8c827a] font-mono">
-                        {new Date(rev.reply.createdAt).toLocaleDateString("ar-EG")}
-                      </span>
+                        <span className="font-bold text-[#1f1915]">{rev.reply.adminName}:</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-[#8c827a] font-mono">
+                          {new Date(rev.reply.createdAt).toLocaleDateString("ar-EG")}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteReply(rev.id)}
+                          className="text-rose-600 hover:bg-rose-100 p-1 px-2 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                          title="حذف الرد الرسمي"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>حذف الرد</span>
+                        </button>
+                      </div>
                     </div>
                     <p className="text-[#1f1915]/80 font-serif pr-2">{rev.reply.reply}</p>
                   </div>

@@ -297,9 +297,6 @@ export default function UserProfileDropdown({
                           {titleText}
                         </h5>
                       </div>
-                      <span className={`text-[10px] font-mono tracking-wider font-semibold bg-white/10 px-2 py-0.5 rounded ${cardText}`}>
-                        EGP {spent.toLocaleString()} Spent
-                      </span>
                     </div>
 
                     <div className="pt-2 flex justify-between items-end border-t border-white/10">

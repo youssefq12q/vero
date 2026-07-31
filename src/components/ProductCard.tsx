@@ -2,6 +2,7 @@ import React from "react";
 import { Heart, Search, Eye, Star } from "lucide-react";
 import { Product } from "../types";
 import { motion } from "motion/react";
+import PriceDisplay from "./PriceDisplay";
 
 interface ProductCardProps {
   key?: React.Key;
@@ -106,9 +107,26 @@ export default function ProductCard({
             </span>
           )}
         </h3>
-        <p className="font-sans text-xs font-semibold tracking-widest text-brand-gold mb-1">
-          EGP {product.price.toLocaleString()}
-        </p>
+        <PriceDisplay
+          price={product.price}
+          originalPrice={product.originalPrice}
+          discountPercent={product.discountPercent}
+          align="center"
+          size="sm"
+          className="mb-1"
+        />
+
+        {/* VERO Points Earned Badge */}
+        {(() => {
+          const pts = product.pointsEarned ?? Math.round(product.price * 0.1);
+          if (pts <= 0) return null;
+          return (
+            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-800 text-[10px] font-bold mb-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+              <span>+{pts} نقطة VERO</span>
+            </div>
+          );
+        })()}
 
         {/* Rating Stars & Total Reviews */}
         {reviewCount !== undefined && reviewCount > 0 ? (

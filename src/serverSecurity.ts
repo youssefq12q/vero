@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 
 const AUDIT_LOGS_FILE = path.join(process.cwd(), "audit-logs-db.json");
+const SESSIONS_FILE = path.join(process.cwd(), "sessions-db.json");
 
 export interface SessionData {
   token: string;
@@ -27,8 +28,38 @@ export interface AuditLogItem {
   timestamp: string;
 }
 
-// In-Memory Session Storage
+// In-Memory Session Storage backed by disk
 const activeSessions = new Map<string, SessionData>();
+
+function loadSessionsFromDisk() {
+  try {
+    if (fs.existsSync(SESSIONS_FILE)) {
+      const data = JSON.parse(fs.readFileSync(SESSIONS_FILE, "utf-8"));
+      const now = Date.now();
+      if (Array.isArray(data)) {
+        data.forEach((session: SessionData) => {
+          if (session.expiresAt > now) {
+            activeSessions.set(session.token, session);
+          }
+        });
+      }
+    }
+  } catch (e) {
+    console.error("Error loading sessions from disk:", e);
+  }
+}
+
+function saveSessionsToDisk() {
+  try {
+    const list = Array.from(activeSessions.values());
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(list, null, 2), "utf-8");
+  } catch (e) {
+    console.error("Error saving sessions to disk:", e);
+  }
+}
+
+// Initial load
+loadSessionsFromDisk();
 
 // Rate Limiting Storage: IP -> { count, startTime }
 const ipRequestCounts = new Map<string, { count: number; startTime: number }>();
@@ -78,6 +109,7 @@ export function createSession(
   };
 
   activeSessions.set(token, session);
+  saveSessionsToDisk();
   return session;
 }
 
@@ -89,6 +121,7 @@ export function validateSession(token: string | undefined, ip: string, userAgent
   const now = Date.now();
   if (now > session.expiresAt) {
     activeSessions.delete(token);
+    saveSessionsToDisk();
     return null;
   }
 
@@ -96,6 +129,7 @@ export function validateSession(token: string | undefined, ip: string, userAgent
   if (session.userAgent && userAgent && session.userAgent.substring(0, 50) !== userAgent.substring(0, 50)) {
     console.warn(`[SECURITY ALERT] Session hijacking attempt detected for user ${session.email} from IP ${ip}`);
     activeSessions.delete(token);
+    saveSessionsToDisk();
     return null;
   }
 
@@ -103,7 +137,18 @@ export function validateSession(token: string | undefined, ip: string, userAgent
 }
 
 export function destroySession(token: string): boolean {
-  return activeSessions.delete(token);
+  const result = activeSessions.delete(token);
+  if (result) saveSessionsToDisk();
+  return result;
+}
+
+export function clearAllUserSessions(): void {
+  for (const [token, session] of activeSessions.entries()) {
+    if (session.role !== "admin" && session.email?.toLowerCase() !== "vero2026@vero.com") {
+      activeSessions.delete(token);
+    }
+  }
+  saveSessionsToDisk();
 }
 
 // 3. Brute-Force & Rate Limiting Controls

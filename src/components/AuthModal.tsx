@@ -7,7 +7,7 @@ import { isSupabaseConfigured, authService } from "../services/supabaseService";
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onLoginSuccess: (user: UserProfile) => void;
+  onLoginSuccess: (user: UserProfile, isFirstLoginWithBonus?: boolean) => void;
 }
 
 export default function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
@@ -93,7 +93,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModal
           setTimeout(() => {
             setStep("success");
             setTimeout(() => {
-              onLoginSuccess(newAccountUser);
+              onLoginSuccess(newAccountUser, !!data.isFirstLoginWithBonus);
               onClose();
             }, 1200);
           }, 800);
@@ -136,7 +136,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModal
         setSuccessName(loggedInUser.name);
         setStep("success");
         setTimeout(() => {
-          onLoginSuccess(loggedInUser);
+          onLoginSuccess(loggedInUser, !!data.isFirstLoginWithBonus);
           onClose();
         }, 1200);
         return;

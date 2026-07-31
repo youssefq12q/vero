@@ -4,6 +4,9 @@ export interface Product {
   categoryName: string;
   categoryId: string;
   price: number;
+  originalPrice?: number; // Old price (السعر القديم)
+  discountPercent?: number; // Calculated or explicit percentage discount
+  pointsEarned?: number; // VERO points customer earns upon buying this product (عدد النقاط عند الشراء)
   image: string;
   secondaryImages: string[];
   description: string;
@@ -93,6 +96,7 @@ export interface UserProfile {
   role?: "admin" | "customer";
   sessionToken?: string;
   loyaltyPoints: number;
+  hasReceivedWelcomeBonus?: boolean;
   totalSpent?: number; // Lifetime total spending in EGP
   joinedDate: string;
   redeemedRewards?: string[];

@@ -41,7 +41,10 @@ import CheckoutFlow from "./components/CheckoutFlow";
 import AdminPanel from "./components/AdminPanel";
 import OrderTrackingView from "./components/OrderTrackingView";
 import AuthModal from "./components/AuthModal";
+import WelcomeBonusModal from "./components/WelcomeBonusModal";
 import SupabasePlayground from "./components/SupabasePlayground";
+import ProductReviewsSection from "./components/ProductReviewsSection";
+import PriceDisplay from "./components/PriceDisplay";
 import { isSupabaseConfigured, supabase, cartService, wishlistService, authService } from "./services/supabaseService";
 
 
@@ -79,6 +82,7 @@ export default function App() {
     return null;
   });
   const [authModalOpen, setAuthModalOpen] = React.useState(false);
+  const [showWelcomeBonusModal, setShowWelcomeBonusModal] = React.useState(false);
 
   // Elite Club Welcome Screen States
   const [showGoldWelcome, setShowGoldWelcome] = React.useState(false);
@@ -102,16 +106,26 @@ export default function App() {
   }, [user]);
 
   React.useEffect(() => {
-    if ((activeTab === "admin" || activeTab === "supabase") && user?.role !== "admin") {
+    if ((activeTab === "admin" || activeTab === "supabase") && user?.role !== "admin" && user?.email?.toLowerCase() !== "vero2026@vero.com") {
       setActiveTab("home");
     }
   }, [activeTab, user]);
 
-  const handleLoginSuccess = async (profile: UserProfile) => {
+  const handleLoginSuccess = async (profile: UserProfile, isFirstLoginWithBonus?: boolean) => {
     setUser(profile);
     localStorage.setItem("vero_user", JSON.stringify(profile));
     if (profile.sessionToken) {
       localStorage.setItem("vero_session_token", profile.sessionToken);
+    }
+
+    // Determine if welcome bonus modal should pop up
+    const userKey = profile.id || profile.email;
+    const bonusShownKey = `vero_welcome_bonus_shown_${userKey}`;
+    const alreadyShownInStorage = localStorage.getItem(bonusShownKey);
+
+    if ((isFirstLoginWithBonus || !alreadyShownInStorage) && profile.hasReceivedWelcomeBonus) {
+      setShowWelcomeBonusModal(true);
+      localStorage.setItem(bonusShownKey, "true");
     }
 
     if (isSupabaseConfigured() && profile.email) {
@@ -145,6 +159,26 @@ export default function App() {
 
     setUser(resolvedProfile);
     localStorage.setItem("vero_user", JSON.stringify(resolvedProfile));
+
+    // Synchronize profile changes to backend server
+    if (resolvedProfile.email) {
+      try {
+        fetch("/api/auth/profile", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: resolvedProfile.email,
+            loyaltyPoints: resolvedProfile.loyaltyPoints,
+            totalSpent: resolvedProfile.totalSpent,
+            tier: resolvedProfile.tier,
+            name: resolvedProfile.name,
+            avatar: resolvedProfile.avatar
+          })
+        }).catch(err => console.error("Server profile sync error:", err));
+      } catch (e) {
+        // ignore
+      }
+    }
 
     if (isSupabaseConfigured()) {
       try {
@@ -252,12 +286,31 @@ export default function App() {
     // 3. Perform background API sync to persist to server disk
     const syncWithServer = async () => {
       try {
+        const token = localStorage.getItem("vero_session_token");
+        const savedUserStr = localStorage.getItem("vero_user");
+        let userEmail = "vero2026@vero.com";
+        if (savedUserStr) {
+          try {
+            const parsed = JSON.parse(savedUserStr);
+            if (parsed.email) userEmail = parsed.email;
+          } catch (e) {
+            // ignore
+          }
+        }
+
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          "X-User-Email": userEmail,
+          ...(token ? { "Authorization": `Bearer ${token}`, "X-Session-Token": token } : {})
+        };
+
         if (next.length < currentProducts.length) {
           // Delete product
           const removed = currentProducts.find((p) => !next.some((n) => n.id === p.id));
           if (removed) {
             const res = await fetch(`/api/products/${removed.id}`, {
               method: "DELETE",
+              headers,
             });
             if (res.ok) {
               const serverProducts = await res.json();
@@ -273,7 +326,7 @@ export default function App() {
           if (added) {
             const res = await fetch("/api/products", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers,
               body: JSON.stringify(added),
             });
             if (res.ok) {
@@ -282,6 +335,8 @@ export default function App() {
                 setProductsState(serverProducts);
                 localStorage.setItem("vero_products", JSON.stringify(serverProducts));
               }
+            } else {
+              console.error("Server product addition error:", res.status, await res.text());
             }
           }
         } else {
@@ -297,7 +352,7 @@ export default function App() {
           if (modified) {
             const res = await fetch(`/api/products/${modified.id}`, {
               method: "PUT",
-              headers: { "Content-Type": "application/json" },
+              headers,
               body: JSON.stringify(modified),
             });
             if (res.ok) {
@@ -306,6 +361,8 @@ export default function App() {
                 setProductsState(serverProducts);
                 localStorage.setItem("vero_products", JSON.stringify(serverProducts));
               }
+            } else {
+              console.error("Server product edit error:", res.status, await res.text());
             }
           }
         }
@@ -1574,9 +1631,64 @@ export default function App() {
                       <h1 className="font-serif text-3xl md:text-4xl text-brand-umber tracking-wide leading-tight mb-2 font-normal">
                         {selectedProduct.name}
                       </h1>
-                      <p className="font-sans text-xl font-semibold text-brand-gold">
-                        EGP {selectedProduct.price.toLocaleString()}
-                      </p>
+                      {(() => {
+                        const stats = productRatingMap[selectedProduct.id] || { sum: 0, count: 0 };
+                        const avg = stats.count > 0 ? stats.sum / stats.count : 5.0;
+                        return (
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className="flex items-center gap-0.5">
+                              {[1, 2, 3, 4, 5].map((s) => (
+                                <Star
+                                  key={s}
+                                  className={`w-4 h-4 ${
+                                    s <= Math.round(avg)
+                                      ? "fill-[#c5a880] text-[#c5a880]"
+                                      : "text-gray-300"
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                            <a
+                              href="#product-reviews-section"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                document.getElementById("product-reviews-section")?.scrollIntoView({ behavior: "smooth" });
+                              }}
+                              className="text-xs font-mono text-brand-outline hover:text-brand-gold underline underline-offset-4 cursor-pointer transition-colors"
+                            >
+                              {stats.count > 0
+                                ? `${avg.toFixed(1)} (${stats.count} ${stats.count === 1 ? "review" : "reviews"} / تقييم)`
+                                : "5.0 (جديد - أضف أول تقييم)"}
+                            </a>
+                          </div>
+                        );
+                      })()}
+                      <PriceDisplay
+                        price={selectedProduct.price}
+                        originalPrice={selectedProduct.originalPrice}
+                        discountPercent={selectedProduct.discountPercent}
+                        size="lg"
+                        className="my-2"
+                      />
+
+                      {/* VERO Points Earned Callout */}
+                      {(() => {
+                        const pts = selectedProduct.pointsEarned ?? Math.round(selectedProduct.price * 0.1);
+                        if (pts <= 0) return null;
+                        return (
+                          <div className="mt-3 p-3 rounded-md bg-amber-50 border border-amber-300/80 flex items-center gap-2.5 text-amber-900 shadow-sm">
+                            <Sparkles className="w-5 h-5 text-amber-600 shrink-0" />
+                            <div className="text-right">
+                              <p className="text-xs font-bold text-amber-950">
+                                تكسب +{pts} نقطة VERO عند شراء هذا المنتج
+                              </p>
+                              <p className="text-[11px] text-amber-800 font-medium">
+                                نقاط مكافآت تُضاف مباشرة إلى رصيدك
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       {selectedProduct.stock !== undefined && (
                         <div className="mt-4">
@@ -1768,6 +1880,20 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Full Product Reviews & Ratings Section on Product Page */}
+              <div id="product-reviews-section" className="mt-20 p-6 md:p-12 border border-brand-outline-variant/20 bg-white rounded-sm shadow-sm">
+                <ProductReviewsSection
+                  productId={selectedProduct.id}
+                  productName={selectedProduct.name}
+                  productImage={selectedProduct.image}
+                  user={user}
+                  userOrders={orders.filter((o) => o.shippingEmail?.toLowerCase() === user?.email?.toLowerCase() || o.email?.toLowerCase() === user?.email?.toLowerCase())}
+                  allReviews={allReviews}
+                  onRefreshReviews={fetchReviews}
+                  onOpenAuth={() => setAuthModalOpen(true)}
+                />
+              </div>
+
               {/* Essence of VERO values block */}
               <section className="mt-32 py-16 bg-brand-surface-low border-y border-brand-outline-variant/10 text-center">
                 <div className="max-w-2xl mx-auto space-y-6 px-6">
@@ -1810,6 +1936,16 @@ export default function App() {
                         }}
                         isFavorited={isFavorited(rec.id)}
                         toggleFavorite={toggleFavorite}
+                        avgRating={
+                          productRatingMap[rec.id]
+                            ? productRatingMap[rec.id].sum / productRatingMap[rec.id].count
+                            : 5
+                        }
+                        reviewCount={
+                          productRatingMap[rec.id]
+                            ? productRatingMap[rec.id].count
+                            : 0
+                        }
                       />
                     ))}
                 </div>
@@ -1850,6 +1986,16 @@ export default function App() {
                       }}
                       isFavorited={true}
                       toggleFavorite={toggleFavorite}
+                      avgRating={
+                        productRatingMap[product.id]
+                          ? productRatingMap[product.id].sum / productRatingMap[product.id].count
+                          : 5
+                      }
+                      reviewCount={
+                        productRatingMap[product.id]
+                          ? productRatingMap[product.id].count
+                          : 0
+                      }
                     />
                   ))}
                 </div>
@@ -2307,6 +2453,14 @@ export default function App() {
         onLoginSuccess={handleLoginSuccess}
       />
 
+      {/* VERO Welcome Bonus Modal */}
+      <WelcomeBonusModal
+        isOpen={showWelcomeBonusModal}
+        onClose={() => setShowWelcomeBonusModal(false)}
+        userName={user?.name}
+        pointsAwarded={250}
+      />
+
       {/* Search slider Panel overlay */}
       <AnimatePresence>
         {searchOpen && (
@@ -2687,7 +2841,7 @@ export default function App() {
                     </button>
                     
                     <a
-                      href="https://wa.me/201000000000"
+                      href={`https://wa.me/201102136064?text=${encodeURIComponent("مرحباً VERO Boutique، أود الاستفسار عن منتج أو المساعدة في طلب.")}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-3.5 rounded-sm transition-all shadow-sm tracking-widest uppercase flex items-center justify-center gap-1.5 cursor-pointer"

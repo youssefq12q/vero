@@ -1,5 +1,5 @@
 import React from "react";
-import { Gem, Award, Users, ShieldCheck, Sparkles, Check } from "lucide-react";
+import { Gem, Award, Users, ShieldCheck, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 const PILLARS_DATA = [
@@ -7,7 +7,7 @@ const PILLARS_DATA = [
     icon: Gem,
     title: "Quality",
     description: "Exceptional Standards",
-    details: "Only the most exceptional conflict-free precious stones and recycled 18k solid gold pass our rigorous 21-point luxury quality verification. Every piece is made to last generations without losing a molecule of its majestic brilliance."
+    details: "Designed to stand the test of time. Every VERO piece is created with premium materials and meticulous craftsmanship, delivering enduring style and reliable quality for years to come."
   },
   {
     icon: Award,
@@ -17,9 +17,9 @@ const PILLARS_DATA = [
   },
   {
     icon: Users,
-    title: "Unisex",
-    description: "Transcending Borders",
-    details: "Elegance knows no gender boundaries. Every VERO piece is designed to seamlessly flow and complement your personal anatomy, regardless of convention. Universal forms, styled by you."
+    title: "Customer Care",
+    description: "Always Here For You",
+    details: "At VERO, your experience matters as much as our products. Our support team is always ready to assist you with orders, product inquiries, and after-sales service, ensuring a smooth and enjoyable shopping experience from start to finish."
   },
   {
     icon: ShieldCheck,
@@ -102,10 +102,6 @@ export default function BrandPillars() {
                     >
                       <div className="bg-brand-linen p-5 border-x border-b border-brand-gold/20 text-xs font-light text-brand-outline leading-relaxed text-center rounded-b-sm shadow-sm">
                         <p>{pillar.details}</p>
-                        <div className="flex items-center justify-center gap-1.5 text-[9px] font-semibold text-brand-gold tracking-widest uppercase mt-4">
-                          <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                          VERO Certified
-                        </div>
                       </div>
                     </motion.div>
                   )}

@@ -12,6 +12,7 @@ export interface Product {
   description: string;
   tagline: string;
   isNew?: boolean;
+  isPreOrder?: boolean;
   materialOptions?: string[]; // hex codes or names
   sizeOptions?: string[];
   details?: string[];

@@ -369,6 +369,7 @@ export default function AdminPanel({
   const [tagline, setTagline] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [isNew, setIsNew] = React.useState(false);
+  const [productType, setProductType] = React.useState<"regular" | "preorder">("regular");
   const [materialOptions, setMaterialOptions] = React.useState<string>("#E5D5BC, #E5E4E2");
   const [sizeOptions, setSizeOptions] = React.useState<string>("Standard, Premium");
   const [details, setDetails] = React.useState<string>("W3C-Validated clean markup structures, Fully accessible (WCAG 2.1 AA compliant)");
@@ -435,6 +436,7 @@ export default function AdminPanel({
       setTagline(editingProduct.tagline);
       setDescription(editingProduct.description);
       setIsNew(!!editingProduct.isNew);
+      setProductType(editingProduct.isPreOrder ? "preorder" : "regular");
       setMaterialOptions(editingProduct.materialOptions?.join(", ") || "");
       setSizeOptions(editingProduct.sizeOptions?.join(", ") || "");
       setDetails(editingProduct.details?.join(", ") || "");
@@ -457,6 +459,7 @@ export default function AdminPanel({
     setTagline("");
     setDescription("");
     setIsNew(false);
+    setProductType("regular");
     setMaterialOptions("#E5D5BC, #E5E4E2");
     setSizeOptions("Standard, Premium");
     setDetails("W3C-Validated clean markup structures, Fully accessible (WCAG 2.1 AA compliant)");
@@ -633,6 +636,7 @@ export default function AdminPanel({
       tagline: tagline.trim() || `"${name.trim()} by VERO Boutique"`,
       description: description.trim() || "An authentic quiet luxury piece hand-finished with exceptional Italian craftsmanship.",
       isNew,
+      isPreOrder: productType === "preorder",
       materialOptions: materialOptions.split(",").map((s) => s.trim()).filter(Boolean),
       sizeOptions: sizeOptions.split(",").map((s) => s.trim()).filter(Boolean),
       details: details.split(",").map((s) => s.trim()).filter(Boolean),
@@ -1326,6 +1330,17 @@ export default function AdminPanel({
                             <span>{product.isNew ? "New Arrival" : "Standard"}</span>
                           </button>
                         </td>
+                        <td className="py-4 px-4 text-center">
+                          {product.isPreOrder ? (
+                            <span className="inline-block text-amber-900 bg-amber-100 px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider border border-amber-300">
+                              Pre-Order
+                            </span>
+                          ) : (
+                            <span className="inline-block text-gray-600 bg-gray-100 px-2.5 py-1 rounded text-[10px] font-medium uppercase tracking-wider">
+                              Regular
+                            </span>
+                          )}
+                        </td>
                         <td className="py-4 px-6 text-right">
                           <div className="flex items-center justify-end gap-2">
                             <button
@@ -1835,6 +1850,64 @@ export default function AdminPanel({
                     </span>
                   </div>
                 </label>
+              </div>
+
+              {/* Product Type (Regular vs Pre-Order) */}
+              <div className="md:col-span-2 space-y-2 py-2 border-t border-brand-outline-variant/20 pt-4">
+                <label className="text-xs font-bold text-brand-umber uppercase tracking-wider block">
+                  Product Type / نوع المنتج
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label
+                    className={`flex items-center gap-3 p-3.5 border rounded-sm cursor-pointer transition-all ${
+                      productType === "regular"
+                        ? "border-brand-gold bg-brand-gold/10 text-brand-umber shadow-sm"
+                        : "border-brand-outline-variant/30 bg-white text-brand-outline hover:border-brand-gold/40"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="productType"
+                      value="regular"
+                      checked={productType === "regular"}
+                      onChange={() => setProductType("regular")}
+                      className="text-brand-gold focus:ring-brand-gold"
+                    />
+                    <div>
+                      <span className="text-xs font-bold uppercase tracking-wider block">
+                        Regular Product
+                      </span>
+                      <span className="text-[10px] text-brand-outline font-light block">
+                        Standard catalog item available for immediate purchase & cart addition.
+                      </span>
+                    </div>
+                  </label>
+
+                  <label
+                    className={`flex items-center gap-3 p-3.5 border rounded-sm cursor-pointer transition-all ${
+                      productType === "preorder"
+                        ? "border-brand-gold bg-brand-gold/10 text-brand-umber shadow-sm"
+                        : "border-brand-outline-variant/30 bg-white text-brand-outline hover:border-brand-gold/40"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="productType"
+                      value="preorder"
+                      checked={productType === "preorder"}
+                      onChange={() => setProductType("preorder")}
+                      className="text-brand-gold focus:ring-brand-gold"
+                    />
+                    <div>
+                      <span className="text-xs font-bold uppercase tracking-wider block text-brand-gold">
+                        Pre-Order Product
+                      </span>
+                      <span className="text-[10px] text-brand-outline font-light block">
+                        Reserved via WhatsApp only. Standard "Add to Cart" is disabled.
+                      </span>
+                    </div>
+                  </label>
+                </div>
               </div>
             </div>
 

@@ -45,7 +45,12 @@ export default function ProductCard({
         />
 
         {/* Dynamic Badges */}
-        <div className="absolute top-4 left-4 flex flex-col gap-1.5 items-start">
+        <div className="absolute top-4 left-4 flex flex-col gap-1.5 items-start z-10">
+          {product.isPreOrder && (
+            <div className="bg-brand-umber text-brand-gold border border-brand-gold/40 font-sans text-[9px] font-bold px-2.5 py-1 tracking-[0.15em] uppercase shadow-md">
+              PRE-ORDER
+            </div>
+          )}
           {product.isNew && (
             <div className="bg-brand-gold text-white font-sans text-[10px] font-medium px-3 py-1 tracking-[0.1em] uppercase shadow-sm">
               NEW

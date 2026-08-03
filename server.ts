@@ -127,6 +127,7 @@ async function seedSupabaseDatabase() {
         points_earned: p.pointsEarned || Math.floor(p.price / 100),
         stock: p.stock === undefined ? 10 : p.stock,
         is_new: !!p.isNew,
+        pre_order: Boolean(p.isPreOrder),
         images: [p.image, ...(p.secondaryImages || [])].filter(Boolean),
         sizes: p.sizeOptions || ["Standard", "Premium"],
         materials: p.materialOptions || ["#E5D5BC", "#E5E4E2"],
@@ -434,8 +435,9 @@ function mapSupabaseToAppProduct(p: any) {
     image: mainImage,
     secondaryImages: secImages,
     description: p.description || "",
-    tagline: p.tagline || "Handcrafted by VERO Atelier",
+    tagline: p.tagline || "",
     isNew: p.is_new !== false,
+    isPreOrder: !!(p.pre_order ?? p.is_pre_order ?? p.isPreOrder),
     materialOptions: Array.isArray(p.materials) && p.materials.length > 0 ? p.materials : ["#E5D5BC", "#E5E4E2"],
     sizeOptions: Array.isArray(p.sizes) && p.sizes.length > 0 ? p.sizes : ["Standard", "Premium"],
     details: Array.isArray(p.details) ? p.details : ["18k Gold Finish", "Hand-polished"],
@@ -669,6 +671,7 @@ app.post("/api/products", requireAdmin, async (req: any, res: any) => {
 
   const data = await dbWriteLogAndExecute("products", "Create Product", req, res, async () => {
     const supabase = getSupabase()!;
+
     return await supabase.from("products").upsert([
       {
         id: newProduct.id,
@@ -679,6 +682,7 @@ app.post("/api/products", requireAdmin, async (req: any, res: any) => {
         points_earned: newProduct.pointsEarned ? Number(newProduct.pointsEarned) : Math.floor(Number(newProduct.price) / 100),
         stock: newProduct.stock === undefined ? 10 : Number(newProduct.stock),
         is_new: !!newProduct.isNew,
+        pre_order: Boolean(newProduct.isPreOrder),
         images: allImages,
         sizes: newProduct.sizeOptions || ["Standard", "Premium"],
         materials: newProduct.materialOptions || ["#E5D5BC", "#E5E4E2"],
@@ -699,6 +703,7 @@ app.put("/api/products/:id", requireAdmin, async (req: any, res: any) => {
 
   const data = await dbWriteLogAndExecute("products", "Update Product", req, res, async () => {
     const supabase = getSupabase()!;
+
     return await supabase.from("products").update({
       name: updated.name,
       category_id: updated.categoryId,
@@ -707,6 +712,7 @@ app.put("/api/products/:id", requireAdmin, async (req: any, res: any) => {
       points_earned: updated.pointsEarned ? Number(updated.pointsEarned) : Math.floor(Number(updated.price) / 100),
       stock: updated.stock === undefined ? null : Number(updated.stock),
       is_new: !!updated.isNew,
+      pre_order: Boolean(updated.isPreOrder),
       images: allImages,
       sizes: updated.sizeOptions || [],
       materials: updated.materialOptions || [],
@@ -756,6 +762,7 @@ app.post("/api/products/reset", requireAdmin, async (req: any, res: any) => {
       points_earned: p.pointsEarned || Math.floor(p.price / 100),
       stock: p.stock === undefined ? 10 : p.stock,
       is_new: !!p.isNew,
+      pre_order: Boolean(p.isPreOrder),
       images: [p.image, ...(p.secondaryImages || [])].filter(Boolean),
       sizes: p.sizeOptions || ["Standard", "Premium"],
       materials: p.materialOptions || ["#E5D5BC", "#E5E4E2"],

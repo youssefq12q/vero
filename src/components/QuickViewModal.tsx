@@ -1,5 +1,5 @@
 import React from "react";
-import { X, ShoppingBag, Heart, Check, Sparkles, Star } from "lucide-react";
+import { X, ShoppingBag, Heart, Check, Sparkles, Star, Clock } from "lucide-react";
 import { Product, UserProfile, Order, Review } from "../types";
 import { motion, AnimatePresence } from "motion/react";
 import ProductReviewsSection from "./ProductReviewsSection";
@@ -9,6 +9,7 @@ interface QuickViewModalProps {
   product: Product | null;
   onClose: () => void;
   onAddToBag: (product: Product, material: string, size: string) => void;
+  onReservePreOrder?: (product: Product) => void;
   isFavorited: boolean;
   toggleFavorite: (product: Product) => void;
   user?: UserProfile | null;
@@ -22,6 +23,7 @@ export default function QuickViewModal({
   product,
   onClose,
   onAddToBag,
+  onReservePreOrder,
   isFavorited,
   toggleFavorite,
   user = null,
@@ -130,6 +132,12 @@ export default function QuickViewModal({
           {/* Right: Info Panels */}
           <div className="md:col-span-6 p-6 md:p-10 flex flex-col justify-between">
             <div>
+              {product.isPreOrder && (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-brand-umber text-brand-gold border border-brand-gold/40 text-[10px] font-bold uppercase tracking-[0.15em] rounded-sm mb-3 shadow-sm">
+                  <Sparkles className="w-3 h-3 text-brand-gold" />
+                  PRE-ORDER ITEM
+                </div>
+              )}
               <span className="text-[10px] font-medium tracking-[0.2em] text-brand-gold uppercase block mb-3">
                 {product.categoryName}
               </span>
@@ -210,13 +218,9 @@ export default function QuickViewModal({
 
               <div className="h-px bg-brand-outline-variant/20 w-full mb-6" />
 
-              <p className="text-xs text-brand-outline font-light leading-relaxed mb-6 italic">
-                {product.tagline}
-              </p>
 
-              <p className="text-xs text-brand-outline font-light leading-relaxed mb-6 line-clamp-3">
-                {product.description}
-              </p>
+
+
 
               {/* Selection: Materials */}
               {product.materialOptions && product.materialOptions.length > 0 && (
@@ -270,31 +274,46 @@ export default function QuickViewModal({
             {/* Actions: Add to bag and Favorite */}
             <div className="space-y-4">
               <div className="flex gap-4">
-                <button
-                  onClick={handleAdd}
-                  disabled={successMsg || product.stock === 0}
-                  className={`flex-1 py-4 px-6 text-xs font-semibold uppercase tracking-[0.15em] transition-all duration-300 flex items-center justify-center gap-2 shadow-sm ${
-                    product.stock === 0
-                      ? "bg-rose-700/85 hover:bg-rose-700/85 text-white cursor-not-allowed"
-                      : "bg-brand-gold hover:bg-brand-umber disabled:bg-brand-gold/80 text-white"
-                  }`}
-                >
-                  {product.stock === 0 ? (
-                    <>
-                      OUT OF STOCK
-                    </>
-                  ) : successMsg ? (
-                    <>
-                      <Check className="w-4 h-4 stroke-[2]" />
-                      Added to Bag!
-                    </>
-                  ) : (
-                    <>
-                      <ShoppingBag className="w-4 h-4 stroke-[1.5]" />
-                      Add to Bag
-                    </>
-                  )}
-                </button>
+                {product.isPreOrder ? (
+                  <button
+                    onClick={() => {
+                      if (onReservePreOrder) {
+                        onReservePreOrder(product);
+                      }
+                      onClose();
+                    }}
+                    className="flex-1 py-4 px-6 text-xs font-semibold uppercase tracking-[0.15em] bg-brand-gold hover:bg-brand-umber text-white transition-all duration-300 flex items-center justify-center gap-2 shadow-md hover:shadow-lg rounded-sm"
+                  >
+                    <Clock className="w-4 h-4 stroke-[1.5]" />
+                    Reserve Now
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleAdd}
+                    disabled={successMsg || product.stock === 0}
+                    className={`flex-1 py-4 px-6 text-xs font-semibold uppercase tracking-[0.15em] transition-all duration-300 flex items-center justify-center gap-2 shadow-sm ${
+                      product.stock === 0
+                        ? "bg-rose-700/85 hover:bg-rose-700/85 text-white cursor-not-allowed"
+                        : "bg-brand-gold hover:bg-brand-umber disabled:bg-brand-gold/80 text-white"
+                    }`}
+                  >
+                    {product.stock === 0 ? (
+                      <>
+                        OUT OF STOCK
+                      </>
+                    ) : successMsg ? (
+                      <>
+                        <Check className="w-4 h-4 stroke-[2]" />
+                        Added to Bag!
+                      </>
+                    ) : (
+                      <>
+                        <ShoppingBag className="w-4 h-4 stroke-[1.5]" />
+                        Add to Bag
+                      </>
+                    )}
+                  </button>
+                )}
 
                 <button
                   onClick={() => toggleFavorite(product)}

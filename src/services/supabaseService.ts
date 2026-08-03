@@ -36,6 +36,7 @@ export function mapDbProductToLocal(dbProduct: any): Product {
     description: dbProduct.description || "",
     tagline: dbProduct.tagline || "",
     isNew: dbProduct.is_new !== false && dbProduct.isNew !== false,
+    isPreOrder: !!(dbProduct.pre_order ?? dbProduct.is_pre_order ?? dbProduct.isPreOrder),
     materialOptions: dbProduct.materials || dbProduct.material_options || dbProduct.materialOptions || ["#E5D5BC", "#E5E4E2"],
     sizeOptions: dbProduct.sizes || dbProduct.size_options || dbProduct.sizeOptions || ["Standard", "Premium"],
     details: dbProduct.details || [],
@@ -46,6 +47,7 @@ export function mapDbProductToLocal(dbProduct: any): Product {
 
 export function mapLocalProductToDb(product: Product): any {
   const allImages = [product.image, ...(product.secondaryImages || [])].filter(Boolean);
+
   return {
     id: product.id,
     name: product.name,
@@ -54,6 +56,7 @@ export function mapLocalProductToDb(product: Product): any {
     images: allImages,
     description: product.description || "",
     is_new: !!product.isNew,
+    pre_order: Boolean(product.isPreOrder),
     materials: product.materialOptions || ["#E5D5BC", "#E5E4E2"],
     sizes: product.sizeOptions || ["Standard", "Premium"],
     stock: product.stock === undefined ? null : product.stock

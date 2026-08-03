@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
+import { useNavigate, useLocation, Routes, Route } from "react-router-dom";
 import { Product, CartItem, UserProfile, getTierFromSpent, Order, Reward, Promo, Review } from "./types";
 import { CATEGORIES, PRODUCTS, STORIES } from "./data";
 import { safeFetch } from "./utils/apiUtils";
@@ -46,14 +47,61 @@ import WelcomeBonusModal from "./components/WelcomeBonusModal";
 import SupabasePlayground from "./components/SupabasePlayground";
 import ProductReviewsSection from "./components/ProductReviewsSection";
 import PriceDisplay from "./components/PriceDisplay";
+import PreOrderModal from "./components/PreOrderModal";
+import ProductDetailsPage from "./components/ProductDetailsPage";
+import { getProductIdentifier } from "./utils/slugUtils";
 import { isSupabaseConfigured, supabase, cartService, wishlistService, authService } from "./services/supabaseService";
 
 
 const LOUNGE_PRODUCTS: Product[] = [];
 
 export default function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   // Navigation & Page state
   const [activeTab, setActiveTab] = React.useState<string>("home"); // 'home', 'shop', 'product-detail', 'favorites', 'bag', 'our-story'
+
+  // Sync location pathname to activeTab state
+  React.useEffect(() => {
+    const path = location.pathname;
+    if (path.startsWith("/product/")) {
+      setActiveTab("product-detail");
+    } else if (path === "/shop") {
+      setActiveTab("shop");
+    } else if (path === "/our-story") {
+      setActiveTab("our-story");
+    } else if (path === "/favorites") {
+      setActiveTab("favorites");
+    } else if (path === "/bag") {
+      setActiveTab("bag");
+    } else if (path === "/tracking" || path === "/track") {
+      setActiveTab("tracking");
+    } else if (path === "/admin") {
+      setActiveTab("admin");
+    } else if (path === "/supabase") {
+      setActiveTab("supabase");
+    } else if (path === "/platinum-lounge") {
+      setActiveTab("platinum-lounge");
+    } else {
+      setActiveTab("home");
+    }
+  }, [location.pathname]);
+
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    setCurrentPage(1);
+    if (tab === "home") navigate("/");
+    else if (tab === "shop") navigate("/shop");
+    else if (tab === "our-story") navigate("/our-story");
+    else if (tab === "favorites") navigate("/favorites");
+    else if (tab === "bag") navigate("/bag");
+    else if (tab === "tracking" || tab === "track") navigate("/tracking");
+    else if (tab === "admin") navigate("/admin");
+    else if (tab === "supabase") navigate("/supabase");
+    else if (tab === "platinum-lounge") navigate("/platinum-lounge");
+    else if (tab !== "product-detail") navigate("/" + tab);
+  };
 
   // Order tracking states
   const [trackInput, setTrackInput] = React.useState<string>("");
@@ -63,6 +111,8 @@ export default function App() {
 
   // Rating & Support Modals State for Tracked Order
   const [showRatingModal, setShowRatingModal] = React.useState(false);
+  const [isPreOrderModalOpen, setIsPreOrderModalOpen] = React.useState(false);
+  const [preOrderProduct, setPreOrderProduct] = React.useState<Product | null>(null);
   const [showSupportModal, setShowSupportModal] = React.useState(false);
   const [ratingStars, setRatingStars] = React.useState(5);
   const [ratingComment, setRatingComment] = React.useState("");
@@ -684,6 +734,12 @@ export default function App() {
 
   // Cart operations
   const handleAddToBag = (product: Product, material: string, size: string, quantity = 1) => {
+    if (product.isPreOrder) {
+      setPreOrderProduct(product);
+      setIsPreOrderModalOpen(true);
+      return;
+    }
+
     const latestProduct = products.find((p) => p.id === product.id) || product;
     const stockLimit = latestProduct.stock;
 
@@ -1031,7 +1087,8 @@ export default function App() {
 
   const handleProductDetailNavigate = (product: Product) => {
     setSelectedProduct(product);
-    setActiveTab("product-detail");
+    const identifier = getProductIdentifier(product);
+    navigate(`/product/${identifier}`);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -1090,19 +1147,16 @@ export default function App() {
       {/* Header component */}
       <Header
         activeTab={activeTab}
-        setActiveTab={(tab) => {
-          setActiveTab(tab);
-          setCurrentPage(1);
-        }}
+        setActiveTab={handleTabChange}
         cartCount={cartCount}
         openSearch={() => setSearchOpen(true)}
         user={user}
         onOpenAuth={() => setAuthModalOpen(true)}
         onLogout={handleLogout}
         onTrackOrder={(orderNum) => {
-          setActiveTab("track");
+          handleTabChange("tracking");
           if (orderNum) {
-            handleTrackOrder(orderNum);
+            handleTrackOrder(undefined, orderNum);
           }
         }}
         onUpdateUser={handleUpdateUser}
@@ -1110,7 +1164,33 @@ export default function App() {
 
       {/* Primary views body */}
       <main className="flex-grow pt-24 md:pt-28">
-        <AnimatePresence mode="wait">
+        <Routes>
+          <Route
+            path="/product/:idOrSlug"
+            element={
+              <ProductDetailsPage
+                products={products}
+                onAddToBag={handleAddToBag}
+                onReservePreOrder={(prod) => {
+                  setPreOrderProduct(prod);
+                  setIsPreOrderModalOpen(true);
+                }}
+                isFavorited={(id) => isFavorited(id)}
+                toggleFavorite={toggleFavorite}
+                user={user}
+                userOrders={orders.filter((o) => o.shippingEmail?.toLowerCase() === user?.email?.toLowerCase() || o.email?.toLowerCase() === user?.email?.toLowerCase())}
+                allReviews={allReviews}
+                onRefreshReviews={fetchReviews}
+                onOpenAuth={() => setAuthModalOpen(true)}
+                triggerNotification={setAppNotification}
+                productRatingMap={productRatingMap}
+              />
+            }
+          />
+          <Route
+            path="*"
+            element={
+              <AnimatePresence mode="wait">
           {activeTab === "home" && (
             <motion.div
               key="home"
@@ -1626,6 +1706,12 @@ export default function App() {
                 <div className="lg:col-span-5 flex flex-col justify-between">
                   <div className="space-y-8">
                     <div>
+                      {selectedProduct.isPreOrder && (
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-brand-umber text-brand-gold border border-brand-gold/40 text-[10px] font-bold uppercase tracking-[0.15em] rounded-sm mb-3 shadow-sm">
+                          <Sparkles className="w-3 h-3 text-brand-gold" />
+                          PRE-ORDER ITEM
+                        </div>
+                      )}
                       <span className="text-[10px] font-sans tracking-[0.25em] font-medium text-brand-gold uppercase block mb-3">
                         HANDCRAFTED SERIES
                       </span>
@@ -1712,15 +1798,7 @@ export default function App() {
 
                     <div className="h-px bg-brand-outline-variant/20 w-full" />
 
-                    {/* Taglines and long desc */}
-                    <div className="space-y-4">
-                      <p className="font-serif italic text-sm text-brand-outline leading-relaxed">
-                        {selectedProduct.tagline}
-                      </p>
-                      <p className="text-xs text-brand-outline font-light leading-relaxed">
-                        {selectedProduct.description}
-                      </p>
-                    </div>
+
 
                     {/* Choices (Material selection) */}
                     {selectedProduct.materialOptions && selectedProduct.materialOptions.length > 0 && (
@@ -1779,31 +1857,46 @@ export default function App() {
 
                   {/* Actions buttons */}
                   <div className="space-y-6 pt-10">
-                    <motion.button
-                      whileHover={selectedProduct.stock === 0 ? {} : { y: -2 }}
-                      whileTap={selectedProduct.stock === 0 ? {} : { scale: 0.98 }}
-                      disabled={selectedProduct.stock === 0}
-                      onClick={() => {
-                        const material = selectedProduct.materialOptions?.[0] || "#E5D5BC";
-                        const size = selectedProduct.sizeOptions?.[0] || "One Size";
-                        handleAddToBag(selectedProduct, material, size);
-                        setActiveTab("bag");
-                      }}
-                      className={`w-full py-5 text-white font-sans text-xs font-semibold uppercase tracking-[0.2em] transition-all shadow-md rounded-sm flex items-center justify-center gap-3 ${
-                        selectedProduct.stock === 0
-                          ? "bg-rose-700/85 cursor-not-allowed"
-                          : "bg-brand-gold hover:bg-brand-umber"
-                      }`}
-                    >
-                      {selectedProduct.stock === 0 ? (
-                        <>OUT OF STOCK</>
-                      ) : (
-                        <>
-                          <ShoppingBag className="w-4 h-4 stroke-[1.5]" />
-                          Add to Bag
-                        </>
-                      )}
-                    </motion.button>
+                    {selectedProduct.isPreOrder ? (
+                      <motion.button
+                        whileHover={{ y: -2 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => {
+                          setPreOrderProduct(selectedProduct);
+                          setIsPreOrderModalOpen(true);
+                        }}
+                        className="w-full py-5 bg-brand-gold hover:bg-brand-umber text-white font-sans text-xs font-semibold uppercase tracking-[0.2em] transition-all shadow-md rounded-sm flex items-center justify-center gap-3 cursor-pointer"
+                      >
+                        <Clock className="w-4 h-4 stroke-[1.5]" />
+                        Reserve Now
+                      </motion.button>
+                    ) : (
+                      <motion.button
+                        whileHover={selectedProduct.stock === 0 ? {} : { y: -2 }}
+                        whileTap={selectedProduct.stock === 0 ? {} : { scale: 0.98 }}
+                        disabled={selectedProduct.stock === 0}
+                        onClick={() => {
+                          const material = selectedProduct.materialOptions?.[0] || "#E5D5BC";
+                          const size = selectedProduct.sizeOptions?.[0] || "One Size";
+                          handleAddToBag(selectedProduct, material, size);
+                          setActiveTab("bag");
+                        }}
+                        className={`w-full py-5 text-white font-sans text-xs font-semibold uppercase tracking-[0.2em] transition-all shadow-md rounded-sm flex items-center justify-center gap-3 ${
+                          selectedProduct.stock === 0
+                            ? "bg-rose-700/85 cursor-not-allowed"
+                            : "bg-brand-gold hover:bg-brand-umber"
+                        }`}
+                      >
+                        {selectedProduct.stock === 0 ? (
+                          <>OUT OF STOCK</>
+                        ) : (
+                          <>
+                            <ShoppingBag className="w-4 h-4 stroke-[1.5]" />
+                            Add to Bag
+                          </>
+                        )}
+                      </motion.button>
+                    )}
                     <p className="text-center text-[10px] font-light text-brand-outline tracking-wider uppercase flex items-center justify-center gap-2">
                       <ShieldCheck className="w-4 h-4 text-brand-gold" />
                       Complimentary bespoke shipping &amp; authentic wrapping
@@ -2417,18 +2510,18 @@ export default function App() {
             </motion.div>
           )}
         </AnimatePresence>
+            }
+          />
+        </Routes>
       </main>
 
       {/* Footer component */}
-      <Footer setActiveTab={setActiveTab} />
+      <Footer setActiveTab={handleTabChange} />
 
       {/* Mobile view Bottom Navbar */}
       <MobileNav
         activeTab={activeTab}
-        setActiveTab={(tab) => {
-          setActiveTab(tab);
-          setCurrentPage(1);
-        }}
+        setActiveTab={handleTabChange}
         cartCount={cartCount}
         user={user}
       />
@@ -2438,6 +2531,10 @@ export default function App() {
         product={quickViewProduct}
         onClose={() => setQuickViewProduct(null)}
         onAddToBag={handleAddToBag}
+        onReservePreOrder={(prod) => {
+          setPreOrderProduct(prod);
+          setIsPreOrderModalOpen(true);
+        }}
         isFavorited={quickViewProduct ? isFavorited(quickViewProduct.id) : false}
         toggleFavorite={toggleFavorite}
         user={user}
@@ -2445,6 +2542,13 @@ export default function App() {
         allReviews={allReviews}
         onRefreshReviews={fetchReviews}
         onOpenAuth={() => setAuthModalOpen(true)}
+      />
+
+      {/* Pre-Order Reservation Modal */}
+      <PreOrderModal
+        product={preOrderProduct}
+        isOpen={isPreOrderModalOpen}
+        onClose={() => setIsPreOrderModalOpen(false)}
       />
 
       {/* Private Member Authentication Modal */}

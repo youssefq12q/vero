@@ -7,26 +7,30 @@ const PILLARS_DATA = [
     icon: Gem,
     title: "Quality",
     description: "Exceptional Standards",
-    details: "Designed to stand the test of time. Every VERO piece is created with premium materials and meticulous craftsmanship, delivering enduring style and reliable quality for years to come."
+    details:
+      "Designed to stand the test of time. Every VERO piece is created with premium materials and meticulous craftsmanship, delivering enduring style and reliable quality for years to come.",
   },
   {
     icon: Award,
     title: "Elegance",
     description: "Artisanal Grace",
-    details: "Restraint is our primary design guideline. We reject ostentation and massive logos in favor of calculated geometry, hand-engraved filigree, and soft matte-brushed textures. Timeless grace for quiet individuals."
+    details:
+      "Every VERO piece is designed with timeless elegance, premium materials, and meticulous craftsmanship. We believe true luxury lies in refined details, lasting quality, and understated sophistication.",
   },
   {
     icon: Users,
     title: "Customer Care",
     description: "Always Here For You",
-    details: "At VERO, your experience matters as much as our products. Our support team is always ready to assist you with orders, product inquiries, and after-sales service, ensuring a smooth and enjoyable shopping experience from start to finish."
+    details:
+      "At VERO, your experience matters as much as our products. Our support team is always ready to assist you with orders, product inquiries, and after-sales service, ensuring a smooth and enjoyable shopping experience from start to finish.",
   },
   {
     icon: ShieldCheck,
     title: "Timeless",
     description: "Sustainable Restraint",
-    details: "We build companion items for a lifetime. Guided by an eco-conscious philosophy, we use 100% recycled precious metals and certified green production methods in our Florence workshops. Restraint that preserves tomorrow."
-  }
+    details:
+      "We create timeless accessories designed to be cherished for years. Every piece is crafted with attention to detail, premium materials, and a commitment to lasting quality.",
+  },
 ];
 
 export default function BrandPillars() {
@@ -60,28 +64,26 @@ export default function BrandPillars() {
                     isOpen
                       ? "bg-brand-linen border-brand-gold/40 shadow-md"
                       : "bg-[#fff8f3] border-brand-outline-variant/20 hover:border-brand-gold/30"
-                  }`}
-                >
+                  }`}>
                   <motion.div
                     layout
                     className={`p-4 rounded-full mb-4 transition-colors duration-300 ${
-                      isOpen ? "bg-brand-gold/10 text-brand-gold" : "text-brand-outline"
-                    }`}
-                  >
+                      isOpen
+                        ? "bg-brand-gold/10 text-brand-gold"
+                        : "text-brand-outline"
+                    }`}>
                     <Icon className="w-6 h-6 stroke-[1.5]" />
                   </motion.div>
 
                   <motion.h4
                     layout
-                    className="font-serif text-base text-brand-umber tracking-wide mb-1"
-                  >
+                    className="font-serif text-base text-brand-umber tracking-wide mb-1">
                     {pillar.title}
                   </motion.h4>
-                  
+
                   <motion.p
                     layout
-                    className="font-sans text-[10px] font-medium uppercase tracking-[0.15em] text-brand-outline mb-2"
-                  >
+                    className="font-sans text-[10px] font-medium uppercase tracking-[0.15em] text-brand-outline mb-2">
                     {pillar.description}
                   </motion.p>
 
@@ -98,8 +100,7 @@ export default function BrandPillars() {
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
                       transition={{ duration: 0.3 }}
-                      className="overflow-hidden w-full max-w-md mx-auto z-10"
-                    >
+                      className="overflow-hidden w-full max-w-md mx-auto z-10">
                       <div className="bg-brand-linen p-5 border-x border-b border-brand-gold/20 text-xs font-light text-brand-outline leading-relaxed text-center rounded-b-sm shadow-sm">
                         <p>{pillar.details}</p>
                       </div>
